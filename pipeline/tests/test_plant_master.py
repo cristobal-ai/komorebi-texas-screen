@@ -97,4 +97,6 @@ def test_county_report(built, tmp_path):
     assert "for Pecos: **7**, 468.0 MW AC" in text   # plants 1,2,3,4,5,6,8
     assert "Pass all hard filters: **3**, 330.0 MW AC" in text  # 1, 2, 8
     assert "not in EIA-860M operating: 1" in text
+    assert "| pass | 3 | 330.0 |" in text        # integer plant counts, not 3.0
+    assert md.read_bytes().startswith(b"\xef\xbb\xbf")
     assert (tmp_path / "pecos_handcheck.csv").exists()

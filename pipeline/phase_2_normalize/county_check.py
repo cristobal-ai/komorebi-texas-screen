@@ -59,7 +59,7 @@ def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out
         "",
         "| status | plants | MW AC |",
         "|---|---:|---:|",
-        *[f"| {s} | {r.plants} | {r.ac_mw:,.1f} |" for s, r in by_status.iterrows()],
+        *[f"| {r.Index} | {int(r.plants)} | {r.ac_mw:,.1f} |" for r in by_status.itertuples()],
         "",
         "## Plants (largest first)",
         "",
@@ -91,5 +91,6 @@ def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out
         "5. Every `review` row: find the missing polygon (USPVDB viewer) or confirm the plant has none.",
     ]
     md = out_dir / f"{key}_handcheck.md"
-    md.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # BOM so Windows PowerShell 5.1 Get-Content and Notepad detect UTF-8 (Δ, —, → otherwise show as mojibake)
+    md.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
     return md
