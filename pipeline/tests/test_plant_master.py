@@ -93,7 +93,7 @@ def test_orphans(built):
 def test_county_report(built, tmp_path):
     plants, orphans = built
     md = county_check.report(plants.reset_index(), orphans, "Pecos", tmp_path)
-    text = md.read_text()
+    text = md.read_bytes().decode("utf-8")  # explicit: Windows defaults to cp1252, which has no Δ
     assert "for Pecos: **7**, 468.0 MW AC" in text   # plants 1,2,3,4,5,6,8
     assert "Pass all hard filters: **3**, 330.0 MW AC" in text  # 1, 2, 8
     assert "not in EIA-860M operating: 1" in text

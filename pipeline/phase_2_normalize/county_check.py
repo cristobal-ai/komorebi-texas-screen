@@ -41,7 +41,7 @@ def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out
     p = plants[plants["county"].fillna("").str.strip().str.lower() == key].sort_values("ac_mw", ascending=False)
     o = orphans[orphans["p_county"].fillna("").str.strip().str.lower().str.startswith(key)]
 
-    p[[c for c in COLUMNS if c in p.columns]].to_csv(out_dir / f"{key}_handcheck.csv", index=False)
+    p[[c for c in COLUMNS if c in p.columns]].to_csv(out_dir / f"{key}_handcheck.csv", index=False, encoding="utf-8-sig")
 
     by_status = p.groupby("filter_status").agg(plants=("eia_id", "size"), ac_mw=("ac_mw", "sum"))
     passed = p[p["filter_status"] == "pass"]
@@ -91,5 +91,5 @@ def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out
         "5. Every `review` row: find the missing polygon (USPVDB viewer) or confirm the plant has none.",
     ]
     md = out_dir / f"{key}_handcheck.md"
-    md.write_text("\n".join(lines) + "\n")
+    md.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return md
