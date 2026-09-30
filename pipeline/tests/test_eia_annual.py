@@ -34,7 +34,7 @@ def test_readers_find_header_and_sheet(eia860_zip, eia923_zip):
     assert "Nameplate Capacity (MW)" in solar.columns          # line break collapsed
     assert len(solar) == 5                                      # Operable only, not Retired
     g = _read923(eia923_zip)
-    assert "Respondent Frequency" in g.columns and len(g) == 7
+    assert "Respondent Frequency" in g.columns and len(g) == 8
 
 
 @pytest.fixture
@@ -74,7 +74,9 @@ def test_capacity_factor(plants):
     h = plants.loc[8]
     assert h.net_ac_cf == pytest.approx(0.45) and h.cf_note == "outside_plausible_range"
     g = plants.loc[7]
-    assert pd.isna(g.net_ac_cf) and g.cf_note == "no_eia923_record"
+    assert g.net_ac_cf == pytest.approx(0.20) and g.cf_series_resolution == "annual"   # AM → annual
+    f = plants.loc[6]
+    assert pd.isna(f.net_ac_cf) and f.cf_note == "no_eia923_record"
 
 
 def test_cf_partial_year_and_leap_year(cfg):
@@ -90,3 +92,12 @@ def test_cf_partial_year_and_leap_year(cfg):
 def test_build_without_annual_files_still_works(generators, polygons, cfg, as_of):
     p, _ = build(generators, polygons, cfg, as_of)
     assert "net_ac_cf" not in p.columns and len(p) == 8
+
+
+def test_unknown_frequency_code_warns_and_stays_null(cfg, caplog):
+    plants = pd.DataFrame({"eia_id": [1], "ac_mw": [100.0], "cod_last": [pd.Timestamp("2018-01-01")]})
+    gen = pd.DataFrame({"Plant Id": [1], "Reported Prime Mover": ["PV"], "Respondent Frequency": ["Q"],
+                        "Net Generation (Megawatthours)": [200000.0], "data_year": [2025]})
+    out = eia923_cf(gen, plants, cfg).set_index("eia_id")
+    assert pd.isna(out.loc[1].cf_series_resolution) and out.loc[1].net_ac_cf > 0
+    assert "not in config frequency_map: ['Q']" in caplog.text

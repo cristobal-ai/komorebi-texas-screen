@@ -144,6 +144,7 @@ def eia923_zip(tmp_path):
         _netgen_row(2, "PV", "A", 0.22 * 150 * 8760),       # annual respondent
         _netgen_row(5, "PV", "M", 60000.0, months=9),       # preliminary: 9 months → incomplete
         _netgen_row(8, "PV", "M", 0.45 * 100 * 8760),       # implausible → noted, value kept
+        _netgen_row(7, "PV", "AM", 0.20 * 20 * 8760),       # 'AM' code (seen on Barilla) → annual
         _netgen_row(99999, "PV", "A", 1234.0),              # state-level increment row: no plant
     ], title_rows=5)
     _sheet(wb, "Page 4 Generator Data", ["Plant Id", "Generator Id"], [[1, "PV1"]], title_rows=5)

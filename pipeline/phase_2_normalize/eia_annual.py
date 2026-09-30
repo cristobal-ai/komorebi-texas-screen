@@ -131,9 +131,11 @@ def eia923_cf(gen: pd.DataFrame, plants: pd.DataFrame, cfg: dict) -> pd.DataFram
     year = int(gen["data_year"].iloc[0]) if "data_year" in gen and len(gen) else None
     hours = (8784 if calendar.isleap(year) else 8760) if year else np.nan
     df["cf_year"] = year
-    df["cf_series_resolution"] = np.select(
-        [df["freq"] == "M", df["freq"] == "A"], ["monthly", "annual"], default=None
-    )
+    fmap = c923["frequency_map"]
+    unknown = sorted(set(df["freq"].dropna()) - set(fmap))
+    if unknown:
+        log.warning("EIA-923 Respondent Frequency codes not in config frequency_map: %s (resolution left null)", unknown)
+    df["cf_series_resolution"] = df["freq"].map(fmap)
     cf = df["net_mwh"] / (df["ac_mw"] * hours)
 
     full_year = df["cod_last"] < pd.Timestamp(year=year or 1900, month=1, day=1)

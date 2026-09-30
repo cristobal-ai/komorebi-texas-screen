@@ -75,6 +75,9 @@ sources:                       # download locations; a file dropped in data/raw/
     key_col: Plant Id
     pv_prime_mover: PV
     min_months_for_full_year: 12   # monthly respondents need 12 reported months for a full-year CF
+    # Respondent Frequency code → cf_series_resolution. Only M guarantees operator-reported months.
+    # AM seen on Barilla Solar (58710) in f923_2025; treated as annual (conservative) until EIA docs say otherwise.
+    frequency_map: {M: monthly, A: annual, AM: annual}
 
 units:
   m2_per_acre: 4046.8564224
