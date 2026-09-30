@@ -1,0 +1,47 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+pipeline/.env
+web/.env.local
+web/.env*.local
+
+# Data cache: everything except the crosswalk and the README
+data/*
+!data/README.md
+!data/crosswalk_eia_ercot.csv
+!data/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+web/.vercel/
+.vercel
+npm-debug.log*
+
+# Outputs
+*.parquet
+*.xlsx
+!docs/**/*.xlsx
+dossiers/
+reports/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code local settings (per-machine)
+.claude/settings.local.json

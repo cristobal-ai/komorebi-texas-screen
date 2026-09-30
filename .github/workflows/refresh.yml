@@ -1,0 +1,66 @@
+# Monthly data refresh — skeleton. The `python -m pipeline.run` entry point is written in Phase 1–2;
+# until then this workflow only installs dependencies and validates config.yaml.
+name: refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Phase to run (all | 1 | 2 | 3 | 4 | 5 | 6)"
+        default: "all"
+      county:
+        description: "Optional county filter for validation runs (e.g. Pecos)"
+        default: ""
+  schedule:
+    # 06:00 UTC on the 5th of each month — after EIA-860M for the prior month is published
+    - cron: "0 6 5 * *"
+
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+      ERCOT_API_USERNAME: ${{ secrets.ERCOT_API_USERNAME }}
+      ERCOT_API_PASSWORD: ${{ secrets.ERCOT_API_PASSWORD }}
+      ERCOT_API_SUBSCRIPTION_KEY: ${{ secrets.ERCOT_API_SUBSCRIPTION_KEY }}
+      NLR_API_KEY: ${{ secrets.NLR_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Validate config
+        run: python -c "import yaml; c=yaml.safe_load(open('pipeline/config.yaml')); print('config', c['version'], 'ok')"
+
+      # Enable once pipeline/run.py exists (Phase 1–2)
+      # - name: Run pipeline
+      #   run: python -m pipeline.run --phase "${{ github.event.inputs.phase || 'all' }}" ${{ github.event.inputs.county && format('--county {0}', github.event.inputs.county) || '' }}
+
+      # - name: Commit updated crosswalk
+      #   run: |
+      #     git config user.name "refresh-bot"
+      #     git config user.email "refresh-bot@users.noreply.github.com"
+      #     git add data/crosswalk_eia_ercot.csv
+      #     git diff --cached --quiet || git commit -m "chore: crosswalk export from refresh run ${{ github.run_id }}"
+      #     git push
+
+      # - name: Notify Slack
+      #   if: always()
+      #   run: |
+      #     [ -z "$SLACK_WEBHOOK_URL" ] && exit 0
+      #     curl -sS -X POST -H 'Content-type: application/json' \
+      #       --data "{\"text\":\"komorebi-texas-screen refresh ${{ job.status }} — run ${{ github.run_id }}\"}" "$SLACK_WEBHOOK_URL"

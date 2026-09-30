@@ -1,0 +1,133 @@
+# Komorebi Texas Screen — scoring and threshold configuration
+# Source: docs/brief.md §2, §5 as amended by docs/build-plan-v2.md §3.
+# Every number the pipeline uses to filter, tier or score lives here. Mirrored into the
+# Supabase `score_config` table so weight changes made in the web app are versioned.
+
+version: 2026-09-30
+
+assumptions:
+  it_mw_per_mwdc: 0.5          # Komorebi: 50 MW firm IT per 100 MWdc
+  pue_assumed: 1.15            # placeholder for the cooling-first design; drives the T1a/T1b line
+  ilr_default: 1.30            # used only when EIA-860 DC capacity is missing
+  fiber_lateral_cost_per_mile_usd: 100000   # range 50k–150k
+  fixed_cost_defaults_usd:     # fixed-cost drag inputs when no site-specific estimate exists
+    ercot_study: 250000
+    title_and_mineral: 150000
+    substation_mod: 1500000
+    legal_and_transaction: 500000
+
+hard_filters:
+  min_ac_mw: 10
+  cod_from: 2015-01-01
+  cod_to: 2022-12-31
+  min_acres_per_mw_ac: 5
+  min_acres: 60
+  technology: utility_pv       # exclude CSP, rooftop, community-solar aggregations
+  ercot_only: true             # El Paso Electric and SPP-Panhandle plants are flagged, not dropped
+  flag_only:
+    - non_ercot_texas
+
+tiers:                         # AC MW bounds; upper bound exclusive
+  T3: {label: Modular,              min_ac_mw: 10,  max_ac_mw: 25}
+  T2: {label: Mid,                  min_ac_mw: 25,  max_ac_mw: 75}
+  T1a: {label: Anchor sub-threshold, min_ac_mw: 75,  max_ac_mw: 100}
+  T1b: {label: Anchor SB6 path,      min_ac_mw: 100, max_ac_mw: null}
+sb6:
+  large_load_threshold_mw: 75  # PUCT 16 TAC §25.194 draft (Mar 2026); Docket 59220 (Jul 2026)
+  # planned_load_mw = ac_mw * ilr * it_mw_per_mwdc * pue_assumed
+  # sb6_review_required = planned_load_mw >= large_load_threshold_mw
+
+scoring:
+  max_total: 100
+  breakpoint_mode: fixed       # fixed | quantile  (switch to quantile after Phase 3b has run)
+
+  A_acquisition_discount:      # 30 pts — lower performance scores higher
+    capture_rate:              # points by capture-rate band (fraction of hub average)
+      max: 12
+      fixed: [{lt: 0.55, pts: 12}, {lt: 0.65, pts: 8}, {lt: 0.75, pts: 4}, {else: 0}]
+      quantile: {q25: 12, q50: 8, q75: 4, else: 0}
+    curtailment_pct:
+      max: 8
+      fixed: [{gt: 0.20, pts: 8}, {gt: 0.10, pts: 5}, {else: 2}]
+      quantile: {q75: 8, q50: 5, else: 2}
+    cf_vs_benchmark:           # capacity-factor points below regional benchmark
+      max: 6
+      fixed: [{below_pts_gt: 4, pts: 6}, {below_pts_gt: 2, pts: 4}, {else: 1}]
+    offtake_status:
+      max: 4
+      merchant: 4
+      short_ppa_lt_5yr: 3
+      long_ig_ppa: 0
+      unknown: 2               # displayed with offtake_confidence = 'unknown'
+
+  B_repowering_upside:         # 15 pts — module type is a vintage proxy (EIA-860 lacks poly/mono)
+    polycrystalline: 6
+    monofacial: 5
+    vintage_tracker_or_fixed: 4
+    vintage_proxy:             # COD year → assumed module class
+      poly_monofacial_until: 2018
+      mixed_until: 2020        # 2019–2020 score half of B
+      mono_perc_from: 2021
+
+  C_physical_envelope:         # 20 pts
+    acres_per_mw_ac:
+      max: 8
+      bands: [{gt: 9, pts: 8}, {gt: 7, pts: 6}, {gt: 5, pts: 3}, {else: 0}]
+    expansion_headroom:        # (parcel acres − array acres) / array acres
+      max: 7
+      bands: [{gt: 0.50, pts: 7}, {gt: 0.20, pts: 4}, {else: 0}]
+    unified_land_control: 5
+
+  D_electrical:                # 20 pts
+    poi_voltage_kv:
+      max: 10
+      bands: [{gte: 345, pts: 10}, {gte: 138, pts: 6}, {gte: 69, pts: 2}, {else: 0}]
+      distribution_class_max_kv: 34.5   # sets distribution_class_poi flag
+    distance_to_345kv_sub_mi:
+      max: 5
+      bands: [{lt: 5, pts: 5}, {lt: 15, pts: 2}, {else: 0}]
+    load_pocket_proximity:
+      max: 5
+      source: manual           # hand-maintained table until PUCT load-queue transparency (Dec 2026)
+
+  E_thermal_cooling:           # 15 pts — Komorebi-specific
+    soil_lambda_w_mk:
+      max: 6
+      bands: [{gte: 2.0, pts: 6}, {gte: 1.5, pts: 4}, {gte: 1.0, pts: 2}, {else: 0}]
+      thermal_response_test_flag_below: 1.0
+    drillability:
+      max: 4
+    hours_below_25c_drybulb:
+      max: 3
+      bands: [{gte: 6000, pts: 3}, {gte: 5000, pts: 2}, {gte: 4000, pts: 1}, {else: 0}]
+    depth_to_water_ft:
+      max: 2
+      bands: [{gte: 200, pts: 2}, {gte: 100, pts: 1}, {else: 0}]
+
+  F_fixed_cost_drag:           # penalty −15..0, on fixed_cost_per_kw_it
+    bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
+
+benchmarks:
+  regional_cf:                 # net AC capacity factor; fill from fleet medians in Phase 3
+    west_texas: null
+    central_texas: null
+    coastal: null
+  capture_rate_reference:      # brief cited ~0.57 standalone / ~0.72 co-located (H1 2025, unverified)
+    standalone: 0.57
+    colocated: 0.72
+
+market_window:
+  months: 36
+  api_history_floor: 2023-12-11    # ERCOT Public API — earlier data needs MIS archive backfill
+
+caveat_flags:                  # displayed on every dossier; never scored
+  - load_import_not_screenable
+  - sb6_large_load_risk
+  - mineral_severance_check_required
+  - btm_configuration_unsettled
+  - ch313_jeti_expiry_check
+  - sb6_colocation_review        # planned_load_mw >= 75
+  - tax_equity_consent_likely    # COD >= 2019
+
+validation:
+  reference_counties: [Pecos, Falls]
