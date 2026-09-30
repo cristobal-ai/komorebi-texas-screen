@@ -58,8 +58,9 @@ This repo is cloned on more than one computer (Windows, Mac, Mac Mini). Rules:
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r pipeline/requirements.txt
 cp pipeline/.env.example pipeline/.env                # then fill in keys
-python -m pipeline.run --phase 1 --county Pecos       # entry point to be written in Phase 1–2
-pytest pipeline/tests
+python -m pipeline.check_env --live                   # Phase 0: which secrets are set, and do they work
+python -m pipeline.run --phase 1-2 --county Pecos     # download → plant master → data/validation/pecos_handcheck.md
+pytest
 
 # Web (once scaffolded in Phase W1)
 cd web && npm install && npm run dev
@@ -67,6 +68,7 @@ cd web && npm install && npm run dev
 
 ## Status
 
-- Phase 0 (accounts & keys): **in progress** — repo created 30 Sep 2026; EIA / ERCOT / NLR keys being provisioned; Supabase project and Vercel Pro upgrade pending.
-- Next: Phase 1–2 (plant master). First task: download USPVDB v4.0 and EIA-860M, join on `eia_id`, apply hard filters, and hand-check Pecos County (count, MW, COD, acres/MW) before writing anything to Supabase.
+- Phase 0 (accounts & keys): **in progress** — repo created 30 Sep 2026. As of 30 Sep 2026: no filled `pipeline/.env` checked on any machine yet; Vercel team exists (no project linked); no Supabase connector. Run `python -m pipeline.check_env --live` on each machine and add the same names as GitHub Actions secrets.
+- Phase 1–2 (plant master): **code written, not yet run on real data.** `pipeline/phase_1_ingest/{uspvdb,eia860m}.py` cache downloads to `data/raw/`; `pipeline/phase_2_normalize/plant_master.py` rolls EIA-860M TX PV generators to plants, joins USPVDB on `eia_id`, applies hard filters (`filter_status` pass/review/fail + `filter_reasons`, nothing silently dropped), tiers, ILR, `planned_load_mw`, SB6 and COD caveat flags → `data/plants.parquet`; `county_check.py` writes the hand-check report. Claude Code cloud sandboxes cannot reach eia.gov / usgs.gov unless those hosts are allowed in the environment's network settings; run locally or via the `refresh` workflow (Actions → refresh → Run workflow, phase `1-2`, county `Pecos`; report is in the run's artifacts). USPVDB v4.0 download URLs in `config.yaml` are unverified — if they 404, drop the zip in `data/raw/uspvdb/manual/`.
+- Next: run phases 1–2, hand-check Pecos, then EIA-860 annual (Schedule 3 solar + grid voltage) and EIA-923 CF before writing `plants` to Supabase.
 - Nothing has been deployed yet.

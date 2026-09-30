@@ -27,6 +27,31 @@ hard_filters:
   flag_only:
     - non_ercot_texas
 
+sources:                       # download locations; a file dropped in data/raw/<source>/manual/ overrides the URL
+  uspvdb:
+    version: "4.0"
+    doi: 10.5066/P9IA3TUS
+    # Candidate URLs, tried in order. Not verified from the cloud sandbox (eerscmap/sciencebase blocked);
+    # if all fail, download the GeoPackage/Shapefile zip by hand into data/raw/uspvdb/manual/.
+    urls:
+      - https://eerscmap.usgs.gov/uspvdb/assets/data/uspvdbGPKG.zip
+      - https://eerscmap.usgs.gov/uspvdb/assets/data/uspvdbSHP.zip
+    area_crs: EPSG:5070        # CONUS Albers equal-area, used to recompute polygon area as a cross-check
+  eia860m:
+    # {month} = full lowercase month name, {year} = 4 digits. Current file first, then the archive path.
+    urls:
+      - https://www.eia.gov/electricity/data/eia860m/xls/{month}_generator{year}.xlsx
+      - https://www.eia.gov/electricity/data/eia860m/archive/xls/{month}_generator{year}.xlsx
+    sheet: Operating
+    lookback_months: 6         # walk back from the current month until a published file is found
+    pv_energy_source: SUN
+    pv_prime_mover: PV
+    state: TX
+    ercot_ba_code: ERCO        # Balancing Authority Code; EPE / SWPP etc. → non_ercot_texas flag
+
+units:
+  m2_per_acre: 4046.8564224
+
 tiers:                         # AC MW bounds; upper bound exclusive
   T3: {label: Modular,              min_ac_mw: 10,  max_ac_mw: 25}
   T2: {label: Mid,                  min_ac_mw: 25,  max_ac_mw: 75}

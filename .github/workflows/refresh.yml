@@ -1,12 +1,11 @@
-# Monthly data refresh — skeleton. The `python -m pipeline.run` entry point is written in Phase 1–2;
-# until then this workflow only installs dependencies and validates config.yaml.
+# Monthly data refresh. Phases 1–2 (plant master) are live; later phases are added as they are written.
 name: refresh
 
 on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "Phase to run (all | 1 | 2 | 3 | 4 | 5 | 6)"
+        description: "Phase to run (all | N | N-M); implemented: 1, 2"
         default: "all"
       county:
         description: "Optional county filter for validation runs (e.g. Pecos)"
@@ -46,9 +45,24 @@ jobs:
       - name: Validate config
         run: python -c "import yaml; c=yaml.safe_load(open('pipeline/config.yaml')); print('config', c['version'], 'ok')"
 
-      # Enable once pipeline/run.py exists (Phase 1–2)
-      # - name: Run pipeline
-      #   run: python -m pipeline.run --phase "${{ github.event.inputs.phase || 'all' }}" ${{ github.event.inputs.county && format('--county {0}', github.event.inputs.county) || '' }}
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Run pipeline
+        run: python -m pipeline.run --phase "${{ github.event.inputs.phase || 'all' }}" ${{ github.event.inputs.county && format('--county {0}', github.event.inputs.county) || '' }}
+
+      # Plant master + hand-check report, downloadable from the run page (Supabase load comes after sign-off)
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-outputs-${{ github.run_id }}
+          path: |
+            data/plants.parquet
+            data/uspvdb_orphans_tx.parquet
+            data/validation/
+          if-no-files-found: warn
+          retention-days: 30
 
       # - name: Commit updated crosswalk
       #   run: |
