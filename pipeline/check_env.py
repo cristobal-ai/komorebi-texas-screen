@@ -63,10 +63,10 @@ def _ercot(env) -> str:
 
 
 def _supabase(env) -> str:
+    from pipeline.load_supabase import headers as sb_headers
+
     key = env["SUPABASE_SECRET_KEY"]
-    headers = {"apikey": key}
-    if not key.startswith("sb_"):  # legacy service_role JWT also needs the Bearer header
-        headers["Authorization"] = f"Bearer {key}"
+    headers = sb_headers(key)
     r = requests.get(f"{env['SUPABASE_URL'].rstrip('/')}/rest/v1/", headers=headers, timeout=30)
     if r.ok:
         return "ok" if key.startswith("sb_secret_") or not key.startswith("sb_") else "ok (but this is not a sb_secret_ key)"

@@ -29,6 +29,7 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="pipeline.run")
     ap.add_argument("--phase", default="all", help="all | N | N-M")
     ap.add_argument("--county", default="", help="write a hand-check report for this county after phase 2")
+    ap.add_argument("--load", action="store_true", help="after phase 2, write pass/review plants to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     load_env()
@@ -52,6 +53,10 @@ def main(argv: list[str] | None = None) -> None:
                 orphans = gpd.read_parquet(DATA_DIR / "uspvdb_orphans_tx.parquet")
                 path = county_check.report(plants, orphans, args.county)
                 logging.getLogger("pipeline").info("hand-check report → %s", path)
+            if args.load:
+                from pipeline import load_supabase
+
+                load_supabase.run()
 
 
 if __name__ == "__main__":
