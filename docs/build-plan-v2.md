@@ -45,6 +45,8 @@ Smaller fixes: the brief's §5 lists section F before E (cosmetic); the composit
 ## 3. Amendments to the brief
 
 ### 3.1 Hard filters (§2)
+> **Amended 30 Sep 2026 (repo):** USPVDB `p_area` turned out to be array area, not site footprint (Pecos passers run 5.2–8.3 ac/MW on it; Greasewood Solar, 255 MW, fails at 4.9). Until TxGIO parcels are joined in Phase 4, filter 4 on array area sends a plant to `review` instead of dropping it; Phase 4 applies the same 5 ac/MW / 60-acre thresholds to parcel area (`hard_filters.footprint_basis`). Section C acres/MW bands are rescaled then. *Refresh the Claude.ai project copy.*
+
 Filters 1, 2, 3, 5 unchanged. Filter 4 (footprint) is now computed from USPVDB `p_area` (m² → acres) ÷ `p_cap_ac`; keep the 5 acres/MW AC floor and the 60-acre minimum. Add an explicit `ercot_flag` for El Paso Electric and SPP-Panhandle plants (flag, do not drop — per the brief).
 
 ### 3.2 Tiers (§2.1)
@@ -56,6 +58,8 @@ Filters 1, 2, 3, 5 unchanged. Filter 4 (footprint) is now computed from USPVDB `
 | T3 — Modular | 10–25 MW | 6.5–16 MW | 7.5–19 MW | No |
 
 PUE 1.15 is a placeholder for the Komorebi cooling-first design; expose it in `config.yaml` (`pue_assumed`) so the T1a/T1b boundary moves with it.
+
+> **Amended 30 Sep 2026 (repo):** the boundary is computed, not fixed at 100: `75 ÷ (PUE × 0.5 × ILR) = 100.33 MW AC` at current config. A 100.0 MW plant at ILR 1.30 carries 74.75 MW of load, so it is T1a. *Refresh the Claude.ai project copy.*
 
 ### 3.3 Data sources (§3)
 Add: **USPVDB v4.0** (USGS/LBNL, DOI 10.5066/P9IA3TUS) as the spine of the plant master; **TxGIO StratMap Land Parcels** (free, shapefile/GDB); **EIA-860 generator file** for `Grid Voltage (kV)`; **OpenStreetMap power lines** as the cross-check for HIFLD; **ERCOT Large Load Interconnection Status** monthly reports for the load-pocket layer. Keep everything else. Add `ercot_api` credentials and `nlr_api_key` (NSRDB — NREL was renamed the National Laboratory of the Rockies; `developer.nrel.gov` was retired 29 May 2026, use `developer.nlr.gov`) to the secrets list.

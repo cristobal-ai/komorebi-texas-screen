@@ -13,7 +13,8 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from pipeline.common import DATA_DIR
+from pipeline.common import DATA_DIR, load_config
+from pipeline.phase_2_normalize.plant_master import sb6_line_ac_mw
 
 VALIDATION_DIR = DATA_DIR / "validation"
 
@@ -35,7 +36,9 @@ def _fmt(v, nd=1):
     return str(v)
 
 
-def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out_dir: Path = VALIDATION_DIR) -> Path:
+def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out_dir: Path = VALIDATION_DIR,
+           cfg: dict | None = None) -> Path:
+    cfg = cfg or load_config()
     out_dir.mkdir(parents=True, exist_ok=True)
     key = county.strip().lower()
     p = plants[plants["county"].fillna("").str.strip().str.lower() == key].sort_values("ac_mw", ascending=False)
@@ -49,6 +52,11 @@ def report(plants: gpd.GeoDataFrame, orphans: gpd.GeoDataFrame, county: str, out
         f"# {county} County hand-check — {dt.date.today():%Y-%m-%d}",
         "",
         f"EIA-860M data month: {_fmt(p['source_month'].dropna().iat[0] if p['source_month'].notna().any() else None)}",
+        "",
+        f"T1a/T1b line (derived): {sb6_line_ac_mw(cfg):,.2f} MW AC · footprint basis: "
+        f"{cfg['hard_filters']['footprint_basis']} (array-area acreage → review, not fail)"
+        if cfg["hard_filters"]["footprint_basis"] == "array_flag"
+        else f"T1a/T1b line (derived): {sb6_line_ac_mw(cfg):,.2f} MW AC · footprint basis: parcel",
         "",
         "## Totals",
         "",

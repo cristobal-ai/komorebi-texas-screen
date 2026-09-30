@@ -1,11 +1,13 @@
 """Phase 2 — plant master: EIA-860M PV generators (TX) rolled up to plants, joined to USPVDB on eia_id.
 
 Every Texas PV plant in EIA-860M is kept in the output with `filter_status` and `filter_reasons`, so the
-hand-check can see why a plant dropped. Downstream phases use `filter_status == 'pass'`.
+hand-check can see why a plant dropped. Phases 3–4 carry `pass` and `review` plants (Phase 4 resolves the
+footprint on parcel area); only `pass` plants are ranked.
 
 filter_status:
   pass    — every hard filter evaluated and passed
-  review  — no hard filter failed, but footprint could not be evaluated (no USPVDB polygon for the eia_id)
+  review  — no hard filter failed, but the footprint is unresolved: no USPVDB polygon for the eia_id, or
+            (footprint_basis = array_flag) array acreage is below the site-footprint thresholds
   fail    — at least one hard filter failed (reasons listed)
 
 Poor performance is a price signal, not a defect: nothing here filters on output, age of modules or curtailment.
@@ -137,6 +139,21 @@ def uspvdb_plants(poly: gpd.GeoDataFrame, cfg: dict) -> gpd.GeoDataFrame:
     return agg
 
 
+def sb6_line_ac_mw(cfg: dict) -> float:
+    """AC MW at which a plant at the default ILR produces exactly the SB6 large-load threshold."""
+    a = cfg["assumptions"]
+    return cfg["sb6"]["large_load_threshold_mw"] / (a["pue_assumed"] * a["it_mw_per_mwdc"] * a["ilr_default"])
+
+
+def resolve_tiers(cfg: dict) -> dict:
+    """Tier bounds with the 'sb6_line' placeholder replaced by its computed value."""
+    line = sb6_line_ac_mw(cfg)
+    out = {}
+    for name, t in cfg["tiers"].items():
+        out[name] = {k: (line if v == "sb6_line" else v) for k, v in t.items()}
+    return out
+
+
 def assign_tier(ac_mw: pd.Series, tiers: dict) -> pd.Series:
     out = pd.Series(pd.NA, index=ac_mw.index, dtype="object")
     for name, t in tiers.items():
@@ -162,32 +179,41 @@ def apply_filters(df: pd.DataFrame, cfg: dict, as_of: dt.date) -> pd.DataFrame:
 
     cod_from = pd.Timestamp(hf["cod_from"])
     cod_to = pd.Timestamp(hf["cod_to"])
-    reasons = pd.Series([[] for _ in range(len(df))], index=df.index)
+    hard = pd.Series([[] for _ in range(len(df))], index=df.index)   # fail the plant
+    soft = pd.Series([[] for _ in range(len(df))], index=df.index)   # send it to review
 
-    def fail(mask, why):
+    def add(target, mask, why):
         for i in df.index[mask.fillna(False)]:
-            reasons[i].append(why)
+            target[i].append(why)
 
-    fail(df["ac_mw"] < hf["min_ac_mw"], f"ac_mw<{hf['min_ac_mw']}")
-    fail(df["cod_first"].isna(), "cod_missing")
-    fail(df["cod_first"] < cod_from, f"cod<{cod_from.date()}")
-    fail(df["cod_first"] > cod_to, f"cod>{cod_to.date()}")
-    fail(df["array_acres"] < hf["min_acres"], f"acres<{hf['min_acres']}")
-    fail(df["acres_per_mw_ac"] < hf["min_acres_per_mw_ac"], f"acres_per_mw<{hf['min_acres_per_mw_ac']}")
+    add(hard, df["ac_mw"] < hf["min_ac_mw"], f"ac_mw<{hf['min_ac_mw']}")
+    add(hard, df["cod_first"].isna(), "cod_missing")
+    add(hard, df["cod_first"] < cod_from, f"cod<{cod_from.date()}")
+    add(hard, df["cod_first"] > cod_to, f"cod>{cod_to.date()}")
+
+    # Filter 4 — footprint. Array area understates the site, so it only flags until parcels exist.
+    basis = hf["footprint_basis"]
+    if basis not in ("array_flag", "parcel"):
+        raise ValueError(f"hard_filters.footprint_basis must be array_flag or parcel, got {basis!r}")
+    fp = soft if basis == "array_flag" else hard
+    prefix = "array_" if basis == "array_flag" else ""
+    add(fp, df["array_acres"] < hf["min_acres"], f"{prefix}acres<{hf['min_acres']}")
+    add(fp, df["acres_per_mw_ac"] < hf["min_acres_per_mw_ac"], f"{prefix}acres_per_mw<{hf['min_acres_per_mw_ac']}")
+    add(soft, df["array_acres"].isna(), "no_uspvdb_polygon")
+    df["footprint_basis"] = basis
 
     # Filter 3 — flag, do not drop (brief §2.3, plan §3.1)
     df["non_ercot_texas"] = df["ba_code"].fillna("") != cfg["sources"]["eia860m"]["ercot_ba_code"]
     df["ercot_flag"] = ~df["non_ercot_texas"]
 
-    df["filter_reasons"] = reasons.map(lambda r: ";".join(r))
-    no_polygon = df["array_acres"].isna()
-    df["filter_status"] = np.where(
-        df["filter_reasons"] != "", "fail", np.where(no_polygon, "review", "pass")
+    df["filter_reasons"] = (hard + soft).map(lambda r: ";".join(r))
+    df["filter_status"] = np.select(
+        [hard.map(bool), soft.map(bool)], ["fail", "review"], default="pass"
     )
-    df.loc[no_polygon & (df["filter_status"] == "review"), "filter_reasons"] = "no_uspvdb_polygon"
 
-    # Tiers and SB6 load (plan §3.2): planned_load = AC × ILR × IT/MWdc × PUE
-    df["tier"] = assign_tier(df["ac_mw"], cfg["tiers"])
+    # Tiers and SB6 load (plan §3.2): planned_load = AC × ILR × IT/MWdc × PUE.
+    # T1a/T1b line is derived at the default ILR; sb6_review_required uses each plant's own ILR.
+    df["tier"] = assign_tier(df["ac_mw"], resolve_tiers(cfg))
     df["firm_it_mw"] = df["ac_mw"] * df["ilr"] * a["it_mw_per_mwdc"]
     df["planned_load_mw"] = df["firm_it_mw"] * a["pue_assumed"]
     df["sb6_review_required"] = df["planned_load_mw"] >= cfg["sb6"]["large_load_threshold_mw"]

@@ -22,6 +22,12 @@ hard_filters:
   cod_to: 2022-12-31
   min_acres_per_mw_ac: 5
   min_acres: 60
+  # Filter 4 is about the *site* footprint. USPVDB p_area is the *array* polygon, which runs smaller
+  # (Pecos passers 5.2–8.3 ac/MW on array area). Decision 30 Sep 2026: until TxGIO parcels land in Phase 4,
+  # acreage on array area only flags (filter_status = review); it does not fail a plant.
+  #   array_flag — acreage checks on USPVDB array area → review
+  #   parcel     — acreage checks on parcel area → fail (switch in Phase 4)
+  footprint_basis: array_flag
   technology: utility_pv       # exclude CSP, rooftop, community-solar aggregations
   ercot_only: true             # El Paso Electric and SPP-Panhandle plants are flagged, not dropped
   flag_only:
@@ -51,11 +57,13 @@ sources:                       # download locations; a file dropped in data/raw/
 units:
   m2_per_acre: 4046.8564224
 
-tiers:                         # AC MW bounds; upper bound exclusive
-  T3: {label: Modular,              min_ac_mw: 10,  max_ac_mw: 25}
-  T2: {label: Mid,                  min_ac_mw: 25,  max_ac_mw: 75}
-  T1a: {label: Anchor sub-threshold, min_ac_mw: 75,  max_ac_mw: 100}
-  T1b: {label: Anchor SB6 path,      min_ac_mw: 100, max_ac_mw: null}
+tiers:                         # AC MW bounds; lower bound inclusive, upper bound exclusive
+  # sb6_line = sb6.large_load_threshold_mw / (pue_assumed × it_mw_per_mwdc × ilr_default)
+  #          = 75 / (1.15 × 0.5 × 1.30) = 100.33 MW AC — moves when any of the four inputs changes.
+  T3: {label: Modular,              min_ac_mw: 10,       max_ac_mw: 25}
+  T2: {label: Mid,                  min_ac_mw: 25,       max_ac_mw: 75}
+  T1a: {label: Anchor sub-threshold, min_ac_mw: 75,       max_ac_mw: sb6_line}
+  T1b: {label: Anchor SB6 path,      min_ac_mw: sb6_line, max_ac_mw: null}
 sb6:
   large_load_threshold_mw: 75  # PUCT 16 TAC §25.194 draft (Mar 2026); Docket 59220 (Jul 2026)
   # planned_load_mw = ac_mw * ilr * it_mw_per_mwdc * pue_assumed
@@ -96,6 +104,7 @@ scoring:
   C_physical_envelope:         # 20 pts
     acres_per_mw_ac:
       max: 8
+      # TODO Phase 4/5: these bands assume site footprint; rescale once parcel area replaces array area
       bands: [{gt: 9, pts: 8}, {gt: 7, pts: 6}, {gt: 5, pts: 3}, {else: 0}]
     expansion_headroom:        # (parcel acres − array acres) / array acres
       max: 7

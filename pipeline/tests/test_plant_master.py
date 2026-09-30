@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from pipeline.phase_2_normalize import county_check
-from pipeline.phase_2_normalize.plant_master import assign_tier, build
+from pipeline.phase_2_normalize.plant_master import assign_tier, build, resolve_tiers, sb6_line_ac_mw
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def test_footprint(built):
     (2, "pass", ""),
     (3, "fail", "ac_mw<10"),
     (4, "fail", "cod>2022-12-31"),
-    (5, "fail", "acres_per_mw<5"),
+    (5, "review", "array_acres_per_mw<5"),   # array area only flags (footprint_basis: array_flag)
     (6, "review", "no_uspvdb_polygon"),
     (7, "pass", ""),
     (8, "pass", ""),
@@ -63,15 +63,44 @@ def test_tiers_and_sb6(built):
     plants = built[0]
     assert plants.loc[1].tier == "T1a" and not plants.loc[1].sb6_review_required   # 59.8 MW load
     assert plants.loc[2].tier == "T1b" and plants.loc[2].sb6_review_required       # 112.1 MW load
-    # 100 MW AC at ILR 1.30 → 74.75 MW load: T1b by the config line, but just under the 75 MW SB6 threshold
-    assert plants.loc[8].tier == "T1b"
+    # 100 MW AC at ILR 1.30 → 74.75 MW load: below the derived 100.33 MW line, so T1a and no SB6 — consistent
+    assert plants.loc[8].tier == "T1a"
     assert plants.loc[8].planned_load_mw == pytest.approx(74.75)
     assert not plants.loc[8].sb6_review_required
 
 
+def test_sb6_line_derived_from_config(cfg):
+    assert sb6_line_ac_mw(cfg) == pytest.approx(75 / (1.15 * 0.5 * 1.30))   # 100.334 MW AC
+    moved = {**cfg, "assumptions": {**cfg["assumptions"], "pue_assumed": 1.25}}
+    assert sb6_line_ac_mw(moved) == pytest.approx(92.31, abs=0.01)           # higher PUE pulls the line down
+
+
 def test_tier_boundaries(cfg):
-    s = pd.Series([9.99, 10, 24.99, 25, 74.99, 75, 99.99, 100, 500])
-    assert list(assign_tier(s, cfg["tiers"])) == [pd.NA, "T3", "T3", "T2", "T2", "T1a", "T1a", "T1b", "T1b"]
+    s = pd.Series([9.99, 10, 24.99, 25, 74.99, 75, 100, 100.33, 100.34, 500])
+    assert list(assign_tier(s, resolve_tiers(cfg))) == [
+        pd.NA, "T3", "T3", "T2", "T2", "T1a", "T1a", "T1a", "T1b", "T1b"]
+
+
+def test_default_ilr_plant_tier_matches_sb6(cfg, as_of):
+    """At the default ILR, tier T1b ⇔ sb6_review_required, on both sides of the line."""
+    from pipeline.phase_2_normalize.plant_master import apply_filters
+    line = sb6_line_ac_mw(cfg)
+    df = pd.DataFrame({
+        "ac_mw": [line - 0.01, line + 0.01], "dc_mw_eia": [float("nan")] * 2, "dc_mw_uspvdb": [float("nan")] * 2,
+        "array_acres": [800.0] * 2, "cod_first": [pd.Timestamp("2018-01-01")] * 2,
+        "cod_last": [pd.Timestamp("2018-01-01")] * 2, "ba_code": ["ERCO"] * 2,
+        "ac_mw_uspvdb": [100.0] * 2, "array_acres_calc": [800.0] * 2,
+    })
+    out = apply_filters(df, cfg, as_of)
+    assert list(out["tier"]) == ["T1a", "T1b"]
+    assert list(out["sb6_review_required"]) == [False, True]
+
+
+def test_parcel_basis_fails_on_acreage(generators, polygons, cfg, as_of):
+    parcel = {**cfg, "hard_filters": {**cfg["hard_filters"], "footprint_basis": "parcel"}}
+    plants, _ = build(generators, polygons, parcel, as_of)
+    p = plants.set_index("eia_id").loc[5]
+    assert p.filter_status == "fail" and p.filter_reasons == "acres_per_mw<5"
 
 
 def test_cod_caveat_flags(built):
@@ -96,6 +125,8 @@ def test_county_report(built, tmp_path):
     text = md.read_bytes().decode("utf-8")  # explicit: Windows defaults to cp1252, which has no Δ
     assert "for Pecos: **7**, 468.0 MW AC" in text   # plants 1,2,3,4,5,6,8
     assert "Pass all hard filters: **3**, 330.0 MW AC" in text  # 1, 2, 8
+    assert "| review | 2 | 70.0 |" in text      # Foxtrot (no polygon) + Echo (array acreage)
+    assert "T1a/T1b line (derived): 100.33 MW AC" in text
     assert "not in EIA-860M operating: 1" in text
     assert "| pass | 3 | 330.0 |" in text        # integer plant counts, not 3.0
     assert md.read_bytes().startswith(b"\xef\xbb\xbf")
