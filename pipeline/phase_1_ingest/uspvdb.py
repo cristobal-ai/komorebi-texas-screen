@@ -26,6 +26,7 @@ def _vector_path_in_zip(zpath: Path) -> str:
     for suffix in VECTOR_SUFFIXES:
         hits = [n for n in names if n.lower().endswith(suffix) and not n.startswith("__MACOSX")]
         if hits:
+            log.info("USPVDB layer: %s (check the version in this name)", hits[0])
             return f"/vsizip/{zpath}/{hits[0]}"
     raise ValueError(f"no vector file in {zpath}: {names[:20]}")
 

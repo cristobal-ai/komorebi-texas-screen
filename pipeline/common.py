@@ -48,17 +48,36 @@ def manual_file(source: str, suffixes: tuple[str, ...]) -> Path | None:
     return files[-1] if files else None
 
 
-def download(url: str, dest: Path, timeout: int = 300) -> Path:
-    """Download url to dest unless dest already exists (the raw cache is never re-fetched implicitly)."""
+# .xlsx and .zip are both zip containers; anything else (e.g. an HTML "page not found" served with 200) is rejected.
+ZIP_MAGIC = b"PK\x03\x04"
+ZIP_SUFFIXES = (".zip", ".xlsx")
+
+
+def download(url: str, dest: Path, timeout: tuple[int, int] = (20, 60)) -> Path:
+    """Download url to dest unless dest already exists (the raw cache is never re-fetched implicitly).
+
+    timeout = (connect s, seconds without receiving a byte). Zip-based files are checked for the zip signature.
+    """
     if dest.exists() and dest.stat().st_size > 0:
         log.info("cache hit %s", dest)
         return dest
     log.info("GET %s", url)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": "komorebi-texas-screen/0.1"}) as r:
-        r.raise_for_status()
-        with open(tmp, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1 << 20):
-                f.write(chunk)
-    tmp.rename(dest)
+    try:
+        with requests.get(url, stream=True, timeout=timeout, headers={"User-Agent": "komorebi-texas-screen/0.1"}) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1 << 20):
+                    f.write(chunk)
+        if dest.suffix.lower() in ZIP_SUFFIXES:
+            with open(tmp, "rb") as f:
+                head = f.read(4)
+            if head != ZIP_MAGIC:
+                raise ValueError(f"not a zip/xlsx (starts with {head!r}; likely an HTML error page)")
+    except Exception as e:
+        tmp.unlink(missing_ok=True)
+        log.warning("failed %s: %s", url, e)
+        raise
+    tmp.replace(dest)
+    log.info("saved %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
     return dest
