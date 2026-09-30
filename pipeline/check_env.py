@@ -21,8 +21,10 @@ REQUIRED = [
     "ERCOT_API_SUBSCRIPTION_KEY",
     "NLR_API_KEY",
     "SUPABASE_URL",
-    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_SECRET_KEY",
 ]
+# Old names still honoured so an existing .env keeps working: new name → legacy name
+ALIASES = {"SUPABASE_SECRET_KEY": "SUPABASE_SERVICE_ROLE_KEY"}
 OPTIONAL = ["SLACK_WEBHOOK_URL"]
 
 ERCOT_TOKEN_URL = (
@@ -61,15 +63,20 @@ def _ercot(env) -> str:
 
 
 def _supabase(env) -> str:
-    key = env["SUPABASE_SERVICE_ROLE_KEY"]
-    r = requests.get(f"{env['SUPABASE_URL'].rstrip('/')}/rest/v1/", headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=30)
-    return "ok" if r.ok else f"HTTP {r.status_code}"
+    key = env["SUPABASE_SECRET_KEY"]
+    headers = {"apikey": key}
+    if not key.startswith("sb_"):  # legacy service_role JWT also needs the Bearer header
+        headers["Authorization"] = f"Bearer {key}"
+    r = requests.get(f"{env['SUPABASE_URL'].rstrip('/')}/rest/v1/", headers=headers, timeout=30)
+    if r.ok:
+        return "ok" if key.startswith("sb_secret_") or not key.startswith("sb_") else "ok (but this is not a sb_secret_ key)"
+    return f"HTTP {r.status_code}"
 
 
 LIVE = {
     "EIA_API_KEY": _eia,
     "ERCOT_API_SUBSCRIPTION_KEY": _ercot,
-    "SUPABASE_SERVICE_ROLE_KEY": _supabase,
+    "SUPABASE_SECRET_KEY": _supabase,
 }
 
 
@@ -81,14 +88,21 @@ def main() -> int:
     print(f"pipeline/.env: {'found' if env_file.exists() else 'NOT FOUND (using process environment only)'}")
     load_env()
     env = {k: os.environ.get(k, "").strip() for k in REQUIRED + OPTIONAL}
+    via_alias = set()
+    for new, old in ALIASES.items():
+        if not env[new] and os.environ.get(old, "").strip():
+            env[new] = os.environ[old].strip()
+            via_alias.add(new)
     missing = 0
     for k in REQUIRED + OPTIONAL:
         state = "set" if env[k] else ("missing" if k in REQUIRED else "missing (optional)")
+        if k in via_alias:
+            state += f" (via legacy name {ALIASES[k]})"
         missing += k in REQUIRED and not env[k]
         live = ""
         if args.live and k in LIVE:
             deps = {"ERCOT_API_SUBSCRIPTION_KEY": ["ERCOT_API_USERNAME", "ERCOT_API_PASSWORD"],
-                    "SUPABASE_SERVICE_ROLE_KEY": ["SUPABASE_URL"]}.get(k, [])
+                    "SUPABASE_SECRET_KEY": ["SUPABASE_URL"]}.get(k, [])
             if all(env[d] for d in deps + [k]):
                 try:
                     live = f"  live: {LIVE[k](env)}"
