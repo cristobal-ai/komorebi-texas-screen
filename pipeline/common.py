@@ -81,3 +81,80 @@ def download(url: str, dest: Path, timeout: tuple[int, int] = (20, 60)) -> Path:
     tmp.replace(dest)
     log.info("saved %s (%.1f MB)", dest, dest.stat().st_size / 1e6)
     return dest
+
+
+# ---- Excel helpers shared by the EIA readers ------------------------------------------------------------------
+
+def norm(name) -> str:
+    """'Grid Voltage (kV)', 'Grid\\nVoltage (kV)' and 'grid_voltage_kv' all → 'gridvoltagekv'."""
+    return "".join(ch for ch in str(name).lower() if ch.isalnum())
+
+
+def find_col(df, *candidates: str, required: bool = False, what: str = "") -> str | None:
+    """First column whose normalized name equals, else starts with, one of the candidates (tried in order).
+
+    EIA renames columns between releases; a miss logs the columns that do exist so the fix is one edit.
+    """
+    by_norm = {norm(c): c for c in df.columns}
+    for cand in candidates:
+        if norm(cand) in by_norm:
+            return by_norm[norm(cand)]
+    for cand in candidates:
+        hits = [c for n, c in by_norm.items() if n.startswith(norm(cand))]
+        if hits:
+            return hits[0]
+    msg = f"column not found for {what or candidates[0]!r} (tried {list(candidates)}); available: {list(df.columns)}"
+    if required:
+        raise KeyError(msg)
+    log.warning(msg)
+    return None
+
+
+def read_excel_table(src, key_col: str, sheets: list[str] | None = None, probe_rows: int = 15):
+    """Read the sheet whose header row contains key_col; EIA prepends title/notes rows, so the header row is found.
+
+    src: path, or a zip path + member as (zip_path, member_name). sheets: preferred sheet names, tried first.
+    Rows whose key_col is not numeric (footnotes, state totals) are dropped; object columns become strings.
+    """
+    import io
+    import zipfile
+
+    import pandas as pd
+
+    if isinstance(src, tuple):
+        zpath, member = src
+        with zipfile.ZipFile(zpath) as z:
+            data = io.BytesIO(z.read(member))
+    else:
+        data = src
+    xl = pd.ExcelFile(data)
+    order = [s for s in (sheets or []) if s in xl.sheet_names] + [s for s in xl.sheet_names if s not in (sheets or [])]
+    key = norm(key_col)
+    for sheet in order:
+        probe = xl.parse(sheet, header=None, nrows=probe_rows)
+        hits = [i for i, row in probe.iterrows() if any(norm(v) == key for v in row.tolist())]
+        if not hits:
+            continue
+        df = xl.parse(sheet, header=hits[0])
+        df.columns = [" ".join(str(c).split()) for c in df.columns]  # collapse EIA's embedded line breaks
+        kc = find_col(df, key_col, required=True)
+        df = df[pd.to_numeric(df[kc], errors="coerce").notna()].copy()
+        df[kc] = pd.to_numeric(df[kc]).astype(int)
+        for c in df.columns:
+            if df[c].dtype == object:
+                df[c] = df[c].map(lambda v: None if pd.isna(v) else str(v).strip())
+        log.info("read %s sheet %r: %d rows", src if not isinstance(src, tuple) else src[1], sheet, len(df))
+        return df
+    raise ValueError(f"no sheet with a {key_col!r} header in {src} (sheets: {xl.sheet_names})")
+
+
+def zip_member(zpath, *patterns: str) -> str:
+    """Name of the first member of zpath whose lower-cased name contains every pattern."""
+    import zipfile
+
+    with zipfile.ZipFile(zpath) as z:
+        names = [n for n in z.namelist() if n.lower().endswith((".xlsx", ".xls"))]
+    for n in names:
+        if all(p.lower() in n.lower() for p in patterns):
+            return n
+    raise FileNotFoundError(f"no member matching {patterns} in {zpath}: {names}")

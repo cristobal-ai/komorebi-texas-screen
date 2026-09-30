@@ -37,10 +37,12 @@ def main(argv: list[str] | None = None) -> None:
         if n not in IMPLEMENTED:
             raise SystemExit(f"phase {n} not implemented yet")
         if n == 1:
-            from pipeline.phase_1_ingest import eia860m, uspvdb
+            from pipeline.phase_1_ingest import eia860m, eia_annual, uspvdb
 
             uspvdb.run()
             eia860m.run()
+            eia_annual.run_eia860()
+            eia_annual.run_eia923()
         elif n == 2:
             from pipeline.phase_2_normalize import county_check, plant_master
 

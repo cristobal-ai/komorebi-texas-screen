@@ -73,3 +73,77 @@ def polygons():
 @pytest.fixture
 def as_of():
     return dt.date(2026, 9, 30)
+
+
+# ---- EIA-860 / EIA-923 fixtures laid out like the real files (title rows, line breaks in headers, zipped) -------
+import zipfile
+
+import openpyxl
+
+
+def _sheet(wb, title, header, rows, title_rows=1):
+    ws = wb.create_sheet(title)
+    for i in range(title_rows):
+        ws.append([f"U.S. Energy Information Administration — note row {i + 1}"])
+    ws.append(header)
+    for r in rows:
+        ws.append(r)
+
+
+def _zip(path, members):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, wb in members.items():
+            tmp = path.parent / name
+            wb.save(tmp)
+            z.write(tmp, name)
+            tmp.unlink()
+    return path
+
+
+@pytest.fixture
+def eia860_zip(tmp_path):
+    plant = openpyxl.Workbook(); plant.remove(plant.active)
+    _sheet(plant, "Plant", ["Utility ID", "Plant Code", "Plant Name", "State", "Grid Voltage (kV)",
+                            "Grid Voltage 2 (kV)", "Grid Voltage 3 (kV)"], [
+        [1, 1, "Alpha", "TX", 345, None, None],
+        [1, 2, "Bravo", "TX", 138, 345, None],
+        [1, 5, "Echo", "TX", 34.5, None, None],
+        [1, 8, "Hotel", "TX", None, None, None],
+    ])
+    solar = openpyxl.Workbook(); solar.remove(solar.active)
+    hdr = ["Plant Code", "Generator ID", "Nameplate\nCapacity (MW)", "Single-Axis Tracking?", "Dual-Axis Tracking?",
+           "Fixed Tilt?", "East West Fixed Tilt?", "Bifacial?", "Crystalline Silicon?", "Thin-Film (CdTe)?"]
+    _sheet(solar, "Operable", hdr, [
+        [1, "PV1", 50, "Y", "N", "N", "N", "N", "Y", "N"],
+        [1, "PV2", 30, "Y", "N", "N", "N", "Y", "Y", "N"],
+        [2, "PV1", 150, "N", "N", "Y", "N", None, "N", "Y"],
+        [5, "PV1", 20, "Y", "N", "Y", "N", "N", "Y", "N"],   # two tracking flags → mixed
+        [5, "PV2", 10, "Y", "N", "N", "N", "N", "Y", "N"],
+    ])
+    _sheet(solar, "Retired and Canceled", hdr, [[1, "OLD", 5, "N", "N", "Y", "N", "N", "Y", "N"]])
+    return _zip(tmp_path / "eia8602025.zip", {"2___Plant_Y2025.xlsx": plant, "3_3_Solar_Y2025.xlsx": solar})
+
+
+def _netgen_row(pid, pm, freq, total, months=12):
+    per = total / months if total is not None else None
+    monthly = [per if i < months else None for i in range(12)]
+    return [pid, f"P{pid}", pm, "SUN", *monthly, total, freq, 2025]
+
+
+@pytest.fixture
+def eia923_zip(tmp_path):
+    wb = openpyxl.Workbook(); wb.remove(wb.active)
+    months = [f"Netgen\n{m}" for m in ("January", "February", "March", "April", "May", "June", "July", "August",
+                                         "September", "October", "November", "December")]
+    hdr = ["Plant Id", "Plant Name", "Reported\nPrime Mover", "Reported\nFuel Type Code", *months,
+           "Net Generation\n(Megawatthours)", "Respondent\nFrequency", "YEAR"]
+    _sheet(wb, "Page 1 Generation and Fuel Data", hdr, [
+        _netgen_row(1, "PV", "M", 0.28 * 80 * 8760),        # 196,224 MWh → CF 0.280, monthly
+        _netgen_row(1, "BA", "M", -500.0),                  # storage row: excluded
+        _netgen_row(2, "PV", "A", 0.22 * 150 * 8760),       # annual respondent
+        _netgen_row(5, "PV", "M", 60000.0, months=9),       # preliminary: 9 months → incomplete
+        _netgen_row(8, "PV", "M", 0.45 * 100 * 8760),       # implausible → noted, value kept
+        _netgen_row(99999, "PV", "A", 1234.0),              # state-level increment row: no plant
+    ], title_rows=5)
+    _sheet(wb, "Page 4 Generator Data", ["Plant Id", "Generator Id"], [[1, "PV1"]], title_rows=5)
+    return _zip(tmp_path / "f923_2025.zip", {"EIA923_Schedules_2_3_4_5_M_12_2025_Final.xlsx": wb})

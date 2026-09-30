@@ -53,6 +53,28 @@ sources:                       # download locations; a file dropped in data/raw/
     pv_prime_mover: PV
     state: TX
     ercot_ba_code: ERCO        # Balancing Authority Code; EPE / SWPP etc. → non_ercot_texas flag
+  eia860:                      # annual survey: plant file (grid voltage) + Schedule 3_3 solar (tracking, module, bifacial)
+    # {year} = data year. Tried newest first: final, then early release (ER), then the archive path.
+    # Not verified from the cloud sandbox (eia.gov blocked) — the first Windows run confirms.
+    urls:
+      - https://www.eia.gov/electricity/data/eia860/xls/eia860{year}.zip
+      - https://www.eia.gov/electricity/data/eia860/xls/eia860{year}ER.zip
+      - https://www.eia.gov/electricity/data/eia860/archive/xls/eia860{year}.zip
+    years_back: [1, 2, 3]      # data years to try, counted back from the current calendar year
+    plant_file: plant          # zip member name contains this (e.g. 2___Plant_Y2025.xlsx)
+    solar_file: solar          # e.g. 3_3_Solar_Y2025.xlsx
+    solar_sheets: [Operable]
+    key_col: Plant Code
+  eia923:                      # net generation by plant and prime mover; 'Respondent Frequency' M | A
+    urls:
+      - https://www.eia.gov/electricity/data/eia923/xls/f923_{year}.zip
+      - https://www.eia.gov/electricity/data/eia923/archive/xls/f923_{year}.zip
+    years_back: [1, 2, 3]      # the current year's file is year-to-date, so start one year back
+    gen_file: schedules_2_3_4_5
+    gen_sheets: [Page 1 Generation and Fuel Data]
+    key_col: Plant Id
+    pv_prime_mover: PV
+    min_months_for_full_year: 12   # monthly respondents need 12 reported months for a full-year CF
 
 units:
   m2_per_acre: 4046.8564224
@@ -141,6 +163,7 @@ scoring:
     bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
 
 benchmarks:
+  cf_plausible_range: [0.05, 0.40]   # net AC CF outside this gets cf_note = outside_plausible_range (not dropped)
   regional_cf:                 # net AC capacity factor; fill from fleet medians in Phase 3
     west_texas: null
     central_texas: null

@@ -4,7 +4,7 @@ Python 3.11 screening pipeline. Phases follow `docs/brief.md` §4; each phase re
 
 | Phase | Package | Reads | Writes |
 |---|---|---|---|
-| 1 | `phase_1_ingest` | EIA 860/860M/923, USPVDB v4.0, ERCOT API, geo sources | `data/raw/<source>/*.parquet` |
+| 1 | `phase_1_ingest` | USPVDB v4.0, EIA-860M, EIA-860 annual, EIA-923 (ERCOT API and geo sources later) | `data/raw/<source>/*.parquet` |
 | 2 | `phase_2_normalize` | raw | `data/plants.parquet` (plant master, filters, tiers) |
 | 3 | `phase_3_market` | plants + ERCOT SCED/SPP | `data/plant_metrics_monthly.parquet` |
 | 4 | `phase_4_geo` | plants + layers | `data/layers_<name>.parquet` |

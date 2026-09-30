@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 
 from pipeline.common import DATA_DIR, load_config, raw_dir
+from pipeline.phase_2_normalize.eia_annual import eia860_attrs, eia923_cf
 
 log = logging.getLogger(__name__)
 
@@ -229,14 +230,21 @@ def apply_filters(df: pd.DataFrame, cfg: dict, as_of: dt.date) -> pd.DataFrame:
     return df
 
 
-def build(gen: pd.DataFrame, poly: gpd.GeoDataFrame, cfg: dict | None = None, as_of: dt.date | None = None):
+def build(gen: pd.DataFrame, poly: gpd.GeoDataFrame, cfg: dict | None = None, as_of: dt.date | None = None,
+          eia860: tuple[pd.DataFrame, pd.DataFrame] | None = None, gen923: pd.DataFrame | None = None):
+    """eia860 = (plant file, 3_3 solar file); gen923 = EIA-923 page 1. Either may be None (columns stay null)."""
     cfg = cfg or load_config()
     as_of = as_of or dt.date.today()
     eia = eia_plants(gen, cfg)
     usp = uspvdb_plants(poly, cfg)
     merged = eia.merge(usp, on="eia_id", how="left", indicator=True)
     merged["uspvdb_match"] = merged.pop("_merge") == "both"
-    plants = gpd.GeoDataFrame(apply_filters(merged, cfg, as_of), geometry="geometry", crs=usp.crs)
+    df = apply_filters(merged, cfg, as_of)
+    if eia860 is not None:
+        df = df.merge(eia860_attrs(*eia860, cfg), on="eia_id", how="left")
+    if gen923 is not None:
+        df = df.merge(eia923_cf(gen923, df, cfg), on="eia_id", how="left")
+    plants = gpd.GeoDataFrame(df, geometry="geometry", crs=usp.crs)
     orphans = usp[~usp["eia_id"].isin(eia["eia_id"])].copy()
     orphans.attrs["tx_rows_without_eia_id"] = usp.attrs.get("tx_rows_without_eia_id", 0)
     return plants, orphans
@@ -245,10 +253,22 @@ def build(gen: pd.DataFrame, poly: gpd.GeoDataFrame, cfg: dict | None = None, as
 def run(as_of: dt.date | None = None) -> Path:
     gen = pd.read_parquet(raw_dir("eia860m") / "eia860m_latest.parquet")
     poly = gpd.read_parquet(raw_dir("uspvdb") / "uspvdb.parquet")
-    plants, orphans = build(gen, poly, as_of=as_of)
+    p860, s860, g923 = (raw_dir("eia860") / "plant.parquet", raw_dir("eia860") / "solar.parquet",
+                        raw_dir("eia923") / "generation.parquet")
+    eia860 = (pd.read_parquet(p860), pd.read_parquet(s860)) if p860.exists() and s860.exists() else None
+    gen923 = pd.read_parquet(g923) if g923.exists() else None
+    if eia860 is None:
+        log.warning("no EIA-860 annual parquet — grid voltage / tracking / module columns will be empty (run phase 1)")
+    if gen923 is None:
+        log.warning("no EIA-923 parquet — capacity factor columns will be empty (run phase 1)")
+    plants, orphans = build(gen, poly, as_of=as_of, eia860=eia860, gen923=gen923)
     plants.to_parquet(OUT_PATH)
     orphans.to_parquet(DATA_DIR / "uspvdb_orphans_tx.parquet")
     counts = plants["filter_status"].value_counts().to_dict()
+    ranked = plants[plants["filter_status"] != "fail"]
+    for col in ("grid_voltage_kv", "tracking_type", "net_ac_cf"):
+        if col in ranked:
+            log.info("  %s populated for %d of %d pass/review plants", col, int(ranked[col].notna().sum()), len(ranked))
     log.info(
         "plant master: %d TX PV plants %s; %d USPVDB TX polygons with eia_id not in EIA-860M operating; → %s",
         len(plants), counts, len(orphans), OUT_PATH,
