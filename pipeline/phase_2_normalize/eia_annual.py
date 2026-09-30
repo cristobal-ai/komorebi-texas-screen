@@ -118,7 +118,9 @@ def eia923_cf(gen: pd.DataFrame, plants: pd.DataFrame, cfg: dict) -> pd.DataFram
     g["_mwh"] = _num(g[total])
     mcols = [c for c in months if c]
     g["_months"] = g[mcols].apply(_num).notna().sum(axis=1) if mcols else 0
-    g["_freq"] = g[freq].astype(str).str.strip().str.upper() if freq else None
+    # Blank cells must stay null (not the string "NONE") so groupby 'first' skips them to the real M/A value.
+    g["_freq"] = g[freq].map(lambda v: None if v is None or pd.isna(v) or not str(v).strip()
+                             else str(v).strip().upper()) if freq else None
     agg = g.groupby("eia_id").agg(
         net_mwh=("_mwh", lambda s: s.sum(min_count=1)),   # all-NaN stays NaN, not 0
         months_reported=("_months", "max"), freq=("_freq", "first"),

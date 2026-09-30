@@ -140,6 +140,7 @@ def eia923_zip(tmp_path):
     _sheet(wb, "Page 1 Generation and Fuel Data", hdr, [
         _netgen_row(1, "PV", "M", 0.28 * 80 * 8760),        # 196,224 MWh → CF 0.280, monthly
         _netgen_row(1, "BA", "M", -500.0),                  # storage row: excluded
+        _netgen_row(2, "PV", None, 0.0),                    # blank frequency on the first row (seen on Barilla)
         _netgen_row(2, "PV", "A", 0.22 * 150 * 8760),       # annual respondent
         _netgen_row(5, "PV", "M", 60000.0, months=9),       # preliminary: 9 months → incomplete
         _netgen_row(8, "PV", "M", 0.45 * 100 * 8760),       # implausible → noted, value kept

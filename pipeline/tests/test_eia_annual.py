@@ -34,7 +34,7 @@ def test_readers_find_header_and_sheet(eia860_zip, eia923_zip):
     assert "Nameplate Capacity (MW)" in solar.columns          # line break collapsed
     assert len(solar) == 5                                      # Operable only, not Retired
     g = _read923(eia923_zip)
-    assert "Respondent Frequency" in g.columns and len(g) == 6
+    assert "Respondent Frequency" in g.columns and len(g) == 7
 
 
 @pytest.fixture
