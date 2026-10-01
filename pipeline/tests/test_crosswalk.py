@@ -161,3 +161,23 @@ def test_review_report(plants, cdr_raw, sced, mapping, cfg, tmp_path):
     text = review_report(xw, tmp_path / "r.md").read_text(encoding="utf-8-sig")
     assert "Plants: 6 · verified: 0 · high: 3 · medium: 1 · low: 1 · none: 1" in text
     assert text.index("| none |") < text.index("| low |") < text.index("| high |")   # worst first
+
+
+def test_verify_helper(plants, cdr_raw, sced, mapping, cfg):
+    from pipeline.phase_3_market.verify import apply, is_verified
+
+    xw = build(plants, cdr_raw, sced, mapping, cfg=cfg).astype(object)
+    xw["eia_plant_id"] = xw["eia_plant_id"].astype(str)
+    out = apply(xw, "CR", "2026-10-01", accept_high=True, sets=["8=HOTEL_SOLAR1"], no_resource={"6"},
+                note=None)
+    v = out[is_verified(out)]
+    assert set(v["eia_plant_id"]) == {"1", "2", "7", "8", "6"}            # 3 high + manual + no-resource
+    h = out[out["eia_plant_id"] == "8"].iloc[0]
+    assert h.ercot_resource_name == "HOTEL_SOLAR1" and h.match_method == "manual" and h.verified_by == "CR"
+    f = out[out["eia_plant_id"] == "6"].iloc[0]
+    assert pd.isna(f.ercot_resource_name) and f.match_method == "manual" and f.verified_by == "CR"
+    # verified rows survive a rebuild untouched
+    again = build(plants, cdr_raw, sced, mapping, existing=out, cfg=cfg)
+    assert again[again["eia_plant_id"].astype(str) == "8"]["ercot_resource_name"].tolist() == ["HOTEL_SOLAR1"]
+    undone = apply(out, "CR", "2026-10-02", undo={"8"})
+    assert not is_verified(undone[undone["eia_plant_id"] == "8"]).any()
