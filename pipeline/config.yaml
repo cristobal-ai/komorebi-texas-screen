@@ -79,6 +79,16 @@ sources:                       # download locations; a file dropped in data/raw/
     # AM seen on Barilla Solar (58710) in f923_2025; treated as annual (conservative) until EIA docs say otherwise.
     frequency_map: {M: monthly, A: annual, AM: annual}
 
+  ercot:
+    # CDR (Capacity, Demand and Reserves) workbook — the one ERCOT file with unit code + county + MW + in-service
+    # year. No stable URL: download the latest from https://www.ercot.com/gridinfo/resource into
+    # data/raw/ercot_cdr/manual/. Sheets are scanned for a header row containing cdr_key_col.
+    cdr_key_col: UNIT CODE
+    cdr_solar_fuel_codes: [SOLAR, SOL, PV]   # rows whose fuel column contains any of these
+    # 60-day SCED disclosure: one day is enough to list every telemetered PV resource (Resource Type PVGR).
+    sced_days_back: 62           # disclosure lags 60 days; ask for a day just past the lag
+    sced_pv_resource_type: PVGR
+
 units:
   m2_per_acre: 4046.8564224
 
@@ -164,6 +174,16 @@ scoring:
 
   F_fixed_cost_drag:           # penalty −15..0, on fixed_cost_per_kw_it
     bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
+
+crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rapidfuzz 0–100
+  name_high: 85                  # token-set similarity of normalized names
+  name_medium: 70
+  name_min: 55                   # below this a unit is not a candidate unless MW + year + county all agree
+  mw_tolerance_high: 0.10        # |Σ ERCOT MW − EIA AC MW| / EIA AC MW
+  mw_tolerance_medium: 0.25
+  year_tolerance: 1              # |CDR in-service year − EIA COD year|
+  # words dropped before comparing names (EIA "Taygete Energy Project LLC" vs CDR "TAYGETE SOLAR")
+  stopwords: [solar, energy, project, projects, llc, lp, inc, farm, pv, power, plant, center, facility, the, park, station, generation, generating, texas, tx]
 
 benchmarks:
   cf_plausible_range: [0.05, 0.40]   # net AC CF outside this gets cf_note = outside_plausible_range (not dropped)

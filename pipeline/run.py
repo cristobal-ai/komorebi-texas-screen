@@ -3,6 +3,7 @@
     python -m pipeline.run --phase 1                  # download + cache USPVDB and EIA-860M
     python -m pipeline.run --phase 2 --county Pecos   # plant master + Pecos hand-check report
     python -m pipeline.run --phase 1-2 --county Pecos
+    python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import geopandas as gpd
 
 from pipeline.common import DATA_DIR, load_env
 
-IMPLEMENTED = {1, 2}
+IMPLEMENTED = {1, 2, 3}
 
 
 def _phases(spec: str) -> list[int]:
@@ -57,6 +58,18 @@ def main(argv: list[str] | None = None) -> None:
                 from pipeline import load_supabase
 
                 load_supabase.run()
+        elif n == 3:
+            from pipeline.phase_1_ingest import ercot
+            from pipeline.phase_3_market import crosswalk
+
+            ercot.cdr()  # required: the only source with unit code + county + MW + year
+            for step in (ercot.sced_pv, ercot.node_to_unit):  # evidence only; crosswalk runs without them
+                try:
+                    step()
+                except Exception as e:  # network / credentials — say so, keep going
+                    logging.getLogger("pipeline").warning("%s failed (%s); crosswalk continues without it",
+                                                          step.__name__, e)
+            crosswalk.run()
 
 
 if __name__ == "__main__":
