@@ -101,15 +101,49 @@ def test_matches(plants, cdr_raw, sced, mapping, cfg):
     assert set(xw["eia_plant_id"]) == {1, 2, 5, 6, 7, 8}         # fail plants (3, 4) not matched
 
 
-def test_unit_claimed_twice_is_downgraded(plants, cdr_raw, cfg):
-    dup = cdr_raw.copy()
-    dup.loc[dup["UNIT CODE"] == "BRAVO_SLR", "UNIT NAME"] = "Bravo Hotel Solar"
-    p = plants.copy()
-    p.loc[p["eia_id"] == 8, ["county", "plant_name"]] = ["Pecos", "Bravo Hotel"]
-    xw = build(p, dup, cfg=cfg)
-    b = xw[xw["ercot_resource_name"] == "BRAVO_SLR"]
-    assert set(b["eia_plant_id"]) == {2, 8} and set(b["match_confidence"]) == {"low"}
-    assert b["notes"].str.contains("claimed by EIA plants").all()
+def _plants(rows):
+    return pd.DataFrame([{"eia_id": i, "plant_name": n, "county": c, "ac_mw": mw,
+                          "cod_first": pd.Timestamp(f"{y}-06-01"), "cod_last": pd.Timestamp(f"{y}-06-01"),
+                          "filter_status": "pass"} for i, n, c, mw, y in rows])
+
+
+def _cdr(rows):
+    return pd.DataFrame([{"UNIT NAME": n, "UNIT CODE": code, "COUNTY": c, "FUEL": "SOLAR", "IN SERVICE YEAR": y,
+                          "INSTALLED CAPACITY RATING": mw} for n, code, c, mw, y in rows])
+
+
+def test_sibling_plants_split_units_by_mw_and_phase(cfg):
+    """Real case from the first run: Prospero / Prospero II and Lamesa / Lamesa II each claimed every unit."""
+    plants = _plants([(62755, "Prospero Solar", "Andrews", 300.0, 2020), (64325, "Prospero Solar II", "Andrews", 250.0, 2021),
+                      (60372, "Lamesa Solar", "Dawson", 102.0, 2018), (61697, "Lamesa II", "Dawson", 50.0, 2018),
+                      (61920, "Galloway 1 Solar Farm", "Concho", 250.0, 2021)])
+    cdr = _cdr([("PROSPERO SOLAR 1 U1", "PROSPERO_UNIT1", "ANDREWS", 153.6, 2020),
+                ("PROSPERO SOLAR 1 U2", "PROSPERO_UNIT2", "ANDREWS", 150.0, 2020),
+                ("PROSPERO SOLAR 2 U1", "PRSPERO2_UNIT1", "ANDREWS", 126.5, 2021),
+                ("PROSPERO SOLAR 2 U2", "PRSPERO2_UNIT2", "ANDREWS", 126.4, 2021),
+                ("BNB LAMESA SOLAR (PHASE I)", "LMESASLR_UNIT1", "DAWSON", 101.6, 2018),
+                ("BNB LAMESA SOLAR (PHASE II)", "LMESASLR_IVORY", "DAWSON", 50.0, 2018),
+                ("GALLOWAY 1 SOLAR", "GALLOWAY_SOLAR1", "CONCHO", 250.0, 2021),
+                ("GALLOWAY 2 SOLAR", "GALLOWAY_SOLAR2", "CONCHO", 111.1, 2024)])
+    xw = build(plants, cdr, cfg=cfg)
+    got = xw.groupby("eia_plant_id")["ercot_resource_name"].apply(sorted).to_dict()
+    assert got[62755] == ["PROSPERO_UNIT1", "PROSPERO_UNIT2"]
+    assert got[64325] == ["PRSPERO2_UNIT1", "PRSPERO2_UNIT2"]
+    assert got[60372] == ["LMESASLR_UNIT1"] and got[61697] == ["LMESASLR_IVORY"]
+    assert got[61920] == ["GALLOWAY_SOLAR1"]                      # 2024 Galloway 2 not pulled in
+    assert set(xw["match_confidence"]) == {"high"}
+    assert xw["ercot_resource_name"].is_unique
+
+
+def test_two_eia_plants_sharing_one_unit(cfg):
+    """Oberon IA (150) + IB (30) are one 180 MW ERCOT unit."""
+    plants = _plants([(62933, "Oberon IA", "Ector", 150.0, 2020), (62932, "Oberon IB", "Ector", 30.0, 2020)])
+    cdr = _cdr([("OBERON SOLAR", "OBERON_UNIT_1", "ECTOR", 180.0, 2020)])
+    xw = build(plants, cdr, cfg=cfg)
+    assert list(xw["ercot_resource_name"]) == ["OBERON_UNIT_1", "OBERON_UNIT_1"]
+    assert set(xw["match_confidence"]) == {"medium"}
+    assert xw["notes"].str.contains(r"shared by EIA plants \[62932, 62933\]").all()
+    assert set(xw["mw_error_pct"]) == {0.0}
 
 
 def test_verified_rows_are_never_overwritten(plants, cdr_raw, cfg):

@@ -111,7 +111,7 @@ def sced_pv(day: dt.date | None = None) -> Path:
 def node_to_unit() -> Path:
     from gridstatus import Ercot
 
-    df = _strings(Ercot().get_resource_node_to_unit())
+    df = _strings(Ercot().get_resource_node_to_unit(date="latest"))
     out = raw_dir("ercot") / "resource_node_to_unit.parquet"
     df.to_parquet(out, index=False)
     log.info("Resource node ↔ unit mapping: %d rows → %s", len(df), out)
