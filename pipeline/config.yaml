@@ -185,7 +185,7 @@ crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rap
   # Unit-subset choice for multi-unit / sibling plants (Prospero vs Prospero II): minimise
   #   |Σ unit MW − EIA MW| / EIA MW + phase_penalty × units whose phase number disagrees with the name
   #                                  + year_penalty × units whose in-service year is outside the COD window
-  phase_penalty: 0.15
+  phase_penalty: 0.05            # a tiebreaker, not a veto: RE Maplewood 250 MW = Redbarn 1 (222) + Redbarn 2 (28)
   year_penalty: 0.10
   max_candidates: 10             # exhaustive subset search over at most this many units (2^10 combinations)
   # words dropped before comparing names (EIA "Taygete Energy Project LLC" vs CDR "TAYGETE SOLAR")

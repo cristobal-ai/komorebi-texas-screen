@@ -269,6 +269,12 @@ def build(plants: pd.DataFrame, cdr_raw: pd.DataFrame, sced: pd.DataFrame | None
 
 def review_report(xw: pd.DataFrame, path: Path = REVIEW_MD) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # The committed CSV is read back as text (so ids and blanks survive); restore numbers and booleans for display.
+    xw = xw.copy()
+    for col in ("ac_mw_eia", "ac_mw_ercot", "cdr_year", "name_score", "mw_error_pct", "sced_max_hsl_mw"):
+        xw[col] = pd.to_numeric(xw[col], errors="coerce")
+    flags = {True: True, False: False, "True": True, "False": False, "true": True, "false": False}
+    xw["sced_coverage"] = xw["sced_coverage"].map(lambda v: flags.get(v) if isinstance(v, (bool, str, np.bool_)) else None)
     per_plant = xw.groupby("eia_plant_id").agg(conf=("match_confidence", "first"),
                                                verified=("verified_by", lambda s: s.notna().any()))
     counts = per_plant["conf"].value_counts().reindex(["high", "medium", "low", "none"], fill_value=0)

@@ -6,6 +6,7 @@
     python -m pipeline.phase_3_market.verify --initials CR --set 63255=EUNICE_PV1+EUNICE_PV2 --set 64447=WES_UNIT1+WES_UNIT2
     python -m pipeline.phase_3_market.verify --initials CR --no-resource 60774,63388 --note "behind the meter"
     python -m pipeline.phase_3_market.verify --status
+    python -m pipeline.phase_3_market.verify --report
 
 --accept-high   every unverified 'high' row
 --accept-medium every unverified 'medium' row (MW+year fallbacks and shared units — read the report first)
@@ -13,6 +14,7 @@
 --set ID=A+B    replace a plant's rows with these ERCOT resource names (manual match)
 --no-resource   record that these plants have no ERCOT resource (stops them being re-matched)
 --undo IDS      clear verification for these plants (next run re-matches them)
+--report        regenerate data/validation/crosswalk_review.md from the CSV (no changes)
 """
 from __future__ import annotations
 
@@ -115,6 +117,7 @@ def main(argv=None):
     ap.add_argument("--note")
     ap.add_argument("--undo")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--report", action="store_true")
     a = ap.parse_args(argv)
     x = load()
     changing = a.accept_high or a.accept_medium or a.accept or a.set or a.no_resource or a.undo
@@ -132,6 +135,10 @@ def main(argv=None):
             for r in newly.itertuples():
                 mw = "" if pd.isna(r.ac_mw_ercot) else f" ({float(r.ac_mw_ercot):.1f} MW vs {float(r.ac_mw_eia):.1f})"
                 print(f"  {r.eia_plant_id} {r.eia_plant_name} -> {r.ercot_resource_name}{mw} [{r.match_confidence}]")
+        from pipeline.phase_3_market.crosswalk import REVIEW_MD, review_report
+
+        print(f"report refreshed: {review_report(x, REVIEW_MD)}")
+    elif a.report:
         from pipeline.phase_3_market.crosswalk import REVIEW_MD, review_report
 
         print(f"report refreshed: {review_report(x, REVIEW_MD)}")

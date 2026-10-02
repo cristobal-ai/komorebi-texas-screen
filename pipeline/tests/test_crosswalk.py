@@ -188,3 +188,27 @@ def test_verify_helper(plants, cdr_raw, sced, mapping, cfg):
     assert again[again["eia_plant_id"].astype(str) == "8"]["ercot_resource_name"].tolist() == ["HOTEL_SOLAR1"]
     undone = apply(out, "CR", "2026-10-02", undo={"8"})
     assert not is_verified(undone[undone["eia_plant_id"] == "8"]).any()
+
+
+def test_maplewood_takes_both_redbarn_units(cfg):
+    """Real case: RE Maplewood 250 MW = Redbarn 1 (222) + Redbarn 2 (28); a phase-number penalty once dropped unit 2."""
+    plants = _plants([(61346, "RE Maplewood", "Pecos", 250.0, 2021)])
+    cdr = _cdr([("REDBARN SOLAR 1 (RE MAPLEWOOD 2A SOLAR)", "REDBARN_UNIT_1", "PECOS", 222.0, 2021),
+                ("REDBARN SOLAR 2 (RE MAPLEWOOD 2B SOLAR)", "REDBARN_UNIT_2", "PECOS", 28.0, 2021),
+                ("TAYGETE SOLAR 1 U1", "TAYGETE_UNIT1", "PECOS", 125.9, 2021)])
+    xw = build(plants, cdr, cfg=cfg)
+    assert sorted(xw["ercot_resource_name"]) == ["REDBARN_UNIT_1", "REDBARN_UNIT_2"]
+    assert set(xw["mw_error_pct"]) == {0.0}
+
+
+def test_review_report_handles_text_columns_from_the_csv(plants, cdr_raw, sced, mapping, cfg, tmp_path):
+    """verify.py reads the CSV with dtype=str; the report must still format MW, years and SCED flags."""
+    from pipeline.phase_3_market.verify import apply
+
+    xw = build(plants, cdr_raw, sced, mapping, cfg=cfg).astype(object)
+    csv = tmp_path / "x.csv"
+    xw.to_csv(csv, index=False)
+    as_text = pd.read_csv(csv, dtype=str)
+    out = apply(as_text, "CR", "2026-10-02", accept_medium=True)
+    text = review_report(out, tmp_path / "r.md").read_text(encoding="utf-8-sig")
+    assert "| medium | CR 2026-10-02 |" in text and "| yes |" in text and "150.0" in text
