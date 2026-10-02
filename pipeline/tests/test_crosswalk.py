@@ -161,6 +161,10 @@ def test_review_report(plants, cdr_raw, sced, mapping, cfg, tmp_path):
     text = review_report(xw, tmp_path / "r.md").read_text(encoding="utf-8-sig")
     assert "Plants: 6 · verified: 0 · high: 3 · medium: 1 · low: 1 · none: 1" in text
     assert text.index("| none |") < text.index("| low |") < text.index("| high |")   # worst first
+    assert "| Conf | Verified |" in text and "| high | — |" in text                  # nothing verified yet
+    xw.loc[xw["eia_plant_id"] == 2, ["verified_by", "verified_on"]] = ["CR", "2026-10-02"]
+    text2 = review_report(xw, tmp_path / "r2.md").read_text(encoding="utf-8-sig")
+    assert "| high | CR 2026-10-02 | 2 | Bravo |" in text2
 
 
 def test_verify_helper(plants, cdr_raw, sced, mapping, cfg):

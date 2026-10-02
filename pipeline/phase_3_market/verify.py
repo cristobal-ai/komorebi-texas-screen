@@ -121,6 +121,9 @@ def main(argv=None):
                   a.set, _ids(a.no_resource), a.note, _ids(a.undo))
         x.to_csv(CROSSWALK_CSV, index=False)
         print(f"saved {CROSSWALK_CSV}")
+        from pipeline.phase_3_market.crosswalk import REVIEW_MD, review_report
+
+        print(f"report refreshed: {review_report(x, REVIEW_MD)}")
     print(status(x))
 
 

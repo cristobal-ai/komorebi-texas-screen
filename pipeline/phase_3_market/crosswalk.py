@@ -275,17 +275,20 @@ def review_report(xw: pd.DataFrame, path: Path = REVIEW_MD) -> Path:
     lines = [f"# EIA ↔ ERCOT crosswalk review — {dt.date.today():%Y-%m-%d}", "",
              f"Plants: {len(per_plant)} · verified: {int(per_plant['verified'].sum())} · "
              + " · ".join(f"{k}: {v}" for k, v in counts.items()), "",
-             "To confirm a row, put your initials in `verified_by` and the date in `verified_on` in "
-             "data/crosswalk_eia_ercot.csv (edit or delete wrong rows; add missing ones). Verified rows are never "
-             "overwritten by later runs.", "",
-             "| Conf | EIA ID | Plant | County | MW EIA | ERCOT resource | CDR name | MW ERCOT | CDR yr | Name | MW err | SCED | Node | Notes |",
-             "|---|---:|---|---|---:|---|---|---:|---:|---:|---:|---|---|---|"]
+             "This report is read-only. Record decisions with `python -m pipeline.phase_3_market.verify` "
+             "(--accept-high, --accept IDS, --set ID=A+B, --no-resource IDS, --status); it writes `verified_by` / "
+             "`verified_on` (columns 11–12) into data/crosswalk_eia_ercot.csv and rerun this report to see them in the "
+             "Verified column. Verified rows are never overwritten by later runs.", "",
+             "| Conf | Verified | EIA ID | Plant | County | MW EIA | ERCOT resource | CDR name | MW ERCOT | CDR yr | Name | MW err | SCED | Node | Notes |",
+             "|---|---|---:|---|---|---:|---|---|---:|---:|---:|---:|---|---|---|"]
     order = {"none": 0, "low": 1, "medium": 2, "high": 3}
     for r in xw.sort_values(by=["match_confidence", "county"], key=lambda s: s.map(order) if s.name == "match_confidence" else s).itertuples():
         def f(v, fmt="{}"):
             return "—" if v is None or (isinstance(v, float) and np.isnan(v)) else fmt.format(v)
         lines.append("| " + " | ".join([
-            f(r.match_confidence), str(r.eia_plant_id), f(r.eia_plant_name), f(r.county), f(r.ac_mw_eia, "{:.1f}"),
+            f(r.match_confidence),
+            (f"{r.verified_by} {str(r.verified_on)[:10]}" if isinstance(r.verified_by, str) and r.verified_by.strip() else "—"),
+            str(r.eia_plant_id), f(r.eia_plant_name), f(r.county), f(r.ac_mw_eia, "{:.1f}"),
             f(r.ercot_resource_name), f(r.cdr_unit_name), f(r.ac_mw_ercot, "{:.1f}"), f(r.cdr_year, "{:.0f}"),
             f(r.name_score, "{:.0f}"), f(r.mw_error_pct, "{:.0f}%"),
             {True: "yes", False: "NO"}.get(r.sced_coverage, "—"), f(r.ercot_settlement_point), f(r.notes),
