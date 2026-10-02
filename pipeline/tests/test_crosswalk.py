@@ -180,6 +180,9 @@ def test_verify_helper(plants, cdr_raw, sced, mapping, cfg):
     assert h.ercot_resource_name == "HOTEL_SOLAR1" and h.match_method == "manual" and h.verified_by == "CR"
     f = out[out["eia_plant_id"] == "6"].iloc[0]
     assert pd.isna(f.ercot_resource_name) and f.match_method == "manual" and f.verified_by == "CR"
+    med = apply(xw, "CR", "2026-10-01", accept_medium=True)
+    assert set(med.loc[is_verified(med), "match_confidence"]) == {"medium"}      # only the medium rows
+    assert set(med.loc[is_verified(med), "eia_plant_id"]) == {"5"}                # ECHOX: mw+year+county fallback
     # verified rows survive a rebuild untouched
     again = build(plants, cdr_raw, sced, mapping, existing=out, cfg=cfg)
     assert again[again["eia_plant_id"].astype(str) == "8"]["ercot_resource_name"].tolist() == ["HOTEL_SOLAR1"]

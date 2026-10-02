@@ -1,12 +1,14 @@
 """Record your crosswalk decisions in data/crosswalk_eia_ercot.csv (verified rows are never overwritten by reruns).
 
     python -m pipeline.phase_3_market.verify --initials CR --accept-high
+    python -m pipeline.phase_3_market.verify --initials CR --accept-medium
     python -m pipeline.phase_3_market.verify --initials CR --accept 61368,62932
     python -m pipeline.phase_3_market.verify --initials CR --set 63255=EUNICE_PV1+EUNICE_PV2 --set 64447=WES_UNIT1+WES_UNIT2
     python -m pipeline.phase_3_market.verify --initials CR --no-resource 60774,63388 --note "behind the meter"
     python -m pipeline.phase_3_market.verify --status
 
 --accept-high   every unverified 'high' row
+--accept-medium every unverified 'medium' row (MW+year fallbacks and shared units — read the report first)
 --accept IDS    every row of these EIA plant ids, as proposed
 --set ID=A+B    replace a plant's rows with these ERCOT resource names (manual match)
 --no-resource   record that these plants have no ERCOT resource (stops them being re-matched)
@@ -36,12 +38,13 @@ def is_verified(x: pd.DataFrame) -> pd.Series:
 
 
 def apply(x: pd.DataFrame, initials: str, today: str, accept_high=False, accept=(), sets=(), no_resource=(),
-          note=None, undo=()) -> pd.DataFrame:
+          note=None, undo=(), accept_medium=False) -> pd.DataFrame:
     x = x.copy()
     pid = x["eia_plant_id"].astype(str)
     stamp = {"verified_by": initials, "verified_on": today}
-    if accept_high:
-        m = (x["match_confidence"] == "high") & ~is_verified(x)
+    levels = [lv for lv, on in (("high", accept_high), ("medium", accept_medium)) if on]
+    if levels:
+        m = x["match_confidence"].isin(levels) & x["ercot_resource_name"].notna() & ~is_verified(x)
         x.loc[m, list(stamp)] = list(stamp.values())
     for i in accept:
         m = pid == i
@@ -105,6 +108,7 @@ def main(argv=None):
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--initials")
     ap.add_argument("--accept-high", action="store_true")
+    ap.add_argument("--accept-medium", action="store_true")
     ap.add_argument("--accept")
     ap.add_argument("--set", action="append", default=[])
     ap.add_argument("--no-resource")
@@ -113,14 +117,21 @@ def main(argv=None):
     ap.add_argument("--status", action="store_true")
     a = ap.parse_args(argv)
     x = load()
-    changing = a.accept_high or a.accept or a.set or a.no_resource or a.undo
+    changing = a.accept_high or a.accept_medium or a.accept or a.set or a.no_resource or a.undo
     if changing:
         if not a.initials:
             raise SystemExit("--initials is required when recording decisions")
+        before = set(x.loc[is_verified(x), "eia_plant_id"].astype(str))
         x = apply(x, a.initials.strip().upper(), dt.date.today().isoformat(), a.accept_high, _ids(a.accept),
-                  a.set, _ids(a.no_resource), a.note, _ids(a.undo))
+                  a.set, _ids(a.no_resource), a.note, _ids(a.undo), accept_medium=a.accept_medium)
         x.to_csv(CROSSWALK_CSV, index=False)
         print(f"saved {CROSSWALK_CSV}")
+        newly = x[is_verified(x) & ~x["eia_plant_id"].astype(str).isin(before)]
+        if len(newly):
+            print(f"newly verified: {newly['eia_plant_id'].nunique()} plants / {len(newly)} rows")
+            for r in newly.itertuples():
+                mw = "" if pd.isna(r.ac_mw_ercot) else f" ({float(r.ac_mw_ercot):.1f} MW vs {float(r.ac_mw_eia):.1f})"
+                print(f"  {r.eia_plant_id} {r.eia_plant_name} -> {r.ercot_resource_name}{mw} [{r.match_confidence}]")
         from pipeline.phase_3_market.crosswalk import REVIEW_MD, review_report
 
         print(f"report refreshed: {review_report(x, REVIEW_MD)}")
