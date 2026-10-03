@@ -234,13 +234,21 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
     return {"start": start, "end": end, "days": len(days), "fetched": len(todo), "failed": failed, "gaps": gaps}
 
 
-def load_cached(start: dt.date, end: dt.date) -> tuple[pd.DataFrame, pd.DataFrame]:
-    def read(folder: Path) -> pd.DataFrame:
+def load_cached(start: dt.date, end: dt.date, resources: set[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Concatenate the cached day files in [start, end]. resources limits SCED rows to those resource names (the
+    crosswalk's), which keeps the frame to ~1/3 of all PV resources and the metrics step to a few minutes."""
+    def read(folder: Path, keep: set[str] | None, col: str | None) -> pd.DataFrame:
         files = [f for f in sorted(folder.glob("*.parquet")) if start.isoformat() <= f.stem <= end.isoformat()]
-        return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True) if files else pd.DataFrame()
+        parts = []
+        for i, f in enumerate(files, 1):
+            d = pd.read_parquet(f)
+            parts.append(d[d[col].isin(keep)] if keep is not None and len(d) else d)
+            if i % 200 == 0:
+                log.info("read %d/%d cached files from %s", i, len(files), folder.name)
+        return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
     base = raw_dir("ercot")
-    return read(base / "sced_15min"), read(base / "spp_15min")
+    return read(base / "sced_15min", resources, "resource_name"), read(base / "spp_15min", None, None)
 
 
 def find(patterns: list[str], day: dt.date) -> None:

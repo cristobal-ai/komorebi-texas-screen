@@ -111,7 +111,9 @@ def unit_monthly(sced15: pd.DataFrame, spp15: pd.DataFrame, xwalk: pd.DataFrame,
     if hub.empty:
         log.warning("no %s prices — capture_rate will be empty", mm["hub_reference"])
     rows = []
-    for x in xwalk.itertuples(index=False):
+    for n, x in enumerate(xwalk.itertuples(index=False), 1):
+        if n % 20 == 0:
+            log.info("unit metrics: %d/%d crosswalk rows", n, len(xwalk))
         res = x.ercot_resource_name
         if not isinstance(res, str) or not res.strip():
             continue

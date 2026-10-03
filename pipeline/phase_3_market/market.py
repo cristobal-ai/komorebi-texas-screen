@@ -99,7 +99,11 @@ def run(since: dt.date | None = None, until: dt.date | None = None, fetch: bool 
     start, end = ercot_history.window(cfg, since, until)
     if fetch:
         ercot_history.run(since, until, xw, retry_missing=retry_missing)
-    sced15, spp15 = ercot_history.load_cached(start, end)
+    log.info("reading cached SCED/SPP days %s → %s ...", start, end)
+    wanted = {v.strip() for v in xw["ercot_resource_name"].dropna().astype(str)}
+    sced15, spp15 = ercot_history.load_cached(start, end, wanted)
+    log.info("loaded %d SCED rows for %d resources, %d price rows; computing metrics ...", len(sced15),
+             sced15["resource_name"].nunique() if len(sced15) else 0, len(spp15))
     if sced15.empty:
         raise RuntimeError(f"no cached SCED days between {start} and {end}; run with fetch enabled on a machine that reaches ERCOT")
     monthly, summary = compute(sced15, spp15, xw, cfg)
