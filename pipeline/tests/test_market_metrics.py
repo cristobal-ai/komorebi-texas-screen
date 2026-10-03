@@ -240,3 +240,25 @@ def test_interrupted_write_is_detected_and_refetched(tmp_path, monkeypatch, cfg)
     assert not list((tmp_path / "ercot" / "spp_15min").glob("*.part"))
     sced, _ = ercot_history.load_cached(day, day)
     assert sced["gen_mwh"].sum() == pytest.approx(80.0)
+
+
+def test_day_with_missing_load_file_falls_back_to_gen_file(tmp_path, monkeypatch, cfg):
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("60d_SCED_Gen_Resource_Data-15-JUL-26.csv", sced_rows(day="2026-07-15").to_csv(index=False))
+    seen = {}
+
+    class ZipGapAPI(FakeAPI):
+        def get_60_day_sced_disclosure(self, date, process=False):
+            raise AssertionError("Could not find load resource file")
+
+        def get_historical_data(self, endpoint, start_date, end_date, read_as_csv=True):
+            seen["start"], seen["csv"] = start_date, read_as_csv
+            return [buf.getvalue()]
+
+    out = ercot_history.fetch_sced_day(ZipGapAPI(), dt.date(2026, 7, 15), cfg)
+    assert out["gen_mwh"].sum() == pytest.approx(80.0)
+    assert seen["start"] == pd.Timestamp("2026-09-13") and seen["csv"] is False   # posted 60 days after the operating day

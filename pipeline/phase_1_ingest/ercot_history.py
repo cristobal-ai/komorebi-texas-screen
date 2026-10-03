@@ -54,9 +54,36 @@ def keep_locations(cfg: dict, xwalk: pd.DataFrame) -> set[str]:
     return sps | {mm["hub_reference"], *mm["price_locations_extra"]}
 
 
+def _gen_resource_from_zip(api, day: dt.date) -> pd.DataFrame:
+    """Read only the Gen Resource file from the day's disclosure zip.
+
+    gridstatus's own reader asserts that the Load Resource and SMNE files are present as well; a few days in the
+    archive (e.g. 2024-08-05, 2025-12-07) lack one, which fails the whole day although the Gen Resource file we need
+    is there."""
+    import io
+    import zipfile
+
+    from gridstatus.ercot_api.ercot_api import SCED_60_DAY_SMNE_ENDPOINT
+
+    start = pd.Timestamp(day) + pd.DateOffset(days=60)
+    blobs = api.get_historical_data(endpoint=SCED_60_DAY_SMNE_ENDPOINT, start_date=start,
+                                    end_date=start + pd.DateOffset(days=1), read_as_csv=False)
+    frames = []
+    for blob in blobs:
+        z = zipfile.ZipFile(io.BytesIO(blob) if isinstance(blob, (bytes, bytearray)) else blob)
+        names = [n for n in z.namelist() if "60d_SCED_Gen_Resource_Data" in n.replace(" ", "_")]
+        if not names:
+            raise KeyError(f"no Gen Resource file in the disclosure zip for {day}: {z.namelist()}")
+        frames.append(pd.read_csv(z.open(names[0])))
+    return pd.concat(frames, ignore_index=True)
+
+
 def fetch_sced_day(api, day: dt.date, cfg: dict) -> pd.DataFrame:
-    data = api.get_60_day_sced_disclosure(date=pd.Timestamp(day), process=False)
-    gen = data["sced_gen_resource"]
+    try:
+        gen = api.get_60_day_sced_disclosure(date=pd.Timestamp(day), process=False)["sced_gen_resource"]
+    except AssertionError as e:
+        log.warning("sced %s: gridstatus could not read the full zip (%s); reading the Gen Resource file directly", day, e)
+        gen = _gen_resource_from_zip(api, day)
     return metrics.sced_to_15min(gen, cfg)
 
 
