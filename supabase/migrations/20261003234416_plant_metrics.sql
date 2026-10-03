@@ -51,7 +51,7 @@ create table public.plant_metrics_monthly (
 alter table public.plant_metrics_monthly enable row level security;
 create policy "allowlisted users read plant_metrics_monthly" on public.plant_metrics_monthly
   for select to authenticated
-  using ((select public.is_allowlisted()));
+  using ((select private.is_allowlisted()));
 
 comment on table public.plant_metrics_monthly is
   'Phase 3b monthly SCED curtailment and capture rate per plant. Written by the pipeline with the secret key.';
