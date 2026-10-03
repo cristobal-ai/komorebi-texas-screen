@@ -93,12 +93,12 @@ def report(summary: pd.DataFrame, plants: pd.DataFrame | None, cfg: dict, window
     return path
 
 
-def run(since: dt.date | None = None, until: dt.date | None = None, fetch: bool = True) -> Path:
+def run(since: dt.date | None = None, until: dt.date | None = None, fetch: bool = True, retry_missing: bool = False) -> Path:
     cfg = load_config()
     xw = verified_crosswalk()
     start, end = ercot_history.window(cfg, since, until)
     if fetch:
-        ercot_history.run(since, until, xw)
+        ercot_history.run(since, until, xw, retry_missing=retry_missing)
     sced15, spp15 = ercot_history.load_cached(start, end)
     if sced15.empty:
         raise RuntimeError(f"no cached SCED days between {start} and {end}; run with fetch enabled on a machine that reaches ERCOT")

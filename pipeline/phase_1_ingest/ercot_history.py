@@ -76,12 +76,18 @@ def fetch_spp_day(api, day: dt.date, keep: set[str] | None) -> pd.DataFrame:
     return out.dropna(subset=["spp"])
 
 
+def _is_no_data(e: Exception) -> bool:
+    """ERCOT answers 200 with no 'archives' key when nothing was posted for a day (a known archive gap); gridstatus
+    raises KeyError('archives') for it. Retrying does not help, so it is treated like NoDataFoundException."""
+    return type(e).__name__ == "NoDataFoundException" or (isinstance(e, KeyError) and e.args == ("archives",))
+
+
 def _with_retries(fn, retries: int, pause: float):
     for attempt in range(1, retries + 1):
         try:
             return fn()
         except Exception as e:
-            if type(e).__name__ == "NoDataFoundException":
+            if _is_no_data(e):
                 raise
             if attempt == retries:
                 raise
@@ -115,7 +121,8 @@ def _cached(folder: Path, day: dt.date) -> bool:
     return (folder / f"{day}.parquet").exists() or (folder / f"{day}.none").exists()
 
 
-def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.DataFrame | None = None) -> dict:
+def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.DataFrame | None = None,
+        retry_missing: bool = False) -> dict:
     cfg = load_config()
     mm = cfg["market_metrics"]
     if xwalk is None:
@@ -128,6 +135,10 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
     sced_dir.mkdir(exist_ok=True), spp_dir.mkdir(exist_ok=True)
     reset_stale_spp(spp_dir, keep)
     days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
+    if retry_missing:
+        for folder in (sced_dir, spp_dir):
+            for d in days:
+                (folder / f"{d}.none").unlink(missing_ok=True)
     todo = [d for d in days if not (_cached(sced_dir, d) and _cached(spp_dir, d))]
     log.info("3b window %s → %s: %d days, %d already cached, %d to fetch", start, end, len(days), len(days) - len(todo), len(todo))
     failed: list[tuple[dt.date, str, str]] = []
@@ -143,7 +154,7 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
             try:
                 df = _with_retries(fetch, mm["retries"], mm["throttle_seconds"])
             except Exception as e:
-                if type(e).__name__ == "NoDataFoundException":
+                if _is_no_data(e):
                     (folder / f"{day}.none").write_text("no data returned by ERCOT\n")
                     log.warning("%s %s: no data from ERCOT", label, day)
                 else:
@@ -158,9 +169,13 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
             time.sleep(mm["throttle_seconds"])
         if i % 10 == 0:
             log.info("fetched %d/%d days (last %s)", i, len(todo), day)
+    gaps = sorted({d for d in days for f in (sced_dir, spp_dir) if (f / f"{d}.none").exists()})
+    if gaps:
+        log.warning("%d days have no ERCOT data (archive gap; not retried — use --retry-missing): %s",
+                    len(gaps), [g.isoformat() for g in gaps[:10]])
     if failed:
         log.warning("%d day-fetches failed; re-run to retry: %s", len(failed), failed[:10])
-    return {"start": start, "end": end, "days": len(days), "fetched": len(todo), "failed": failed}
+    return {"start": start, "end": end, "days": len(days), "fetched": len(todo), "failed": failed, "gaps": gaps}
 
 
 def load_cached(start: dt.date, end: dt.date) -> tuple[pd.DataFrame, pd.DataFrame]:

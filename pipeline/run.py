@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--since", type=dt.date.fromisoformat, default=None, help="3b: first operating day (YYYY-MM-DD)")
     ap.add_argument("--until", type=dt.date.fromisoformat, default=None, help="3b: last operating day")
     ap.add_argument("--no-fetch", action="store_true", help="3b: compute from cached days only")
+    ap.add_argument("--retry-missing", action="store_true", help="3b: re-fetch days ERCOT previously returned no data for")
     ap.add_argument("--load", action="store_true", help="after phase 2, write pass/review plants to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -44,7 +45,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.phase == "3b":
         from pipeline.phase_3_market import market
 
-        market.run(args.since, args.until, fetch=not args.no_fetch)
+        market.run(args.since, args.until, fetch=not args.no_fetch, retry_missing=args.retry_missing)
         return
 
     for n in _phases(args.phase):

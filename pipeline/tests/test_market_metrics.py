@@ -198,3 +198,26 @@ def test_peak_hsl_ratio_flags_derated_plant(cfg):
     s = metrics.plant_summary(metrics.plant_monthly(metrics.unit_monthly(sced, spp_frame(), x, cfg2), ac, cfg2), x, ac, cfg2).iloc[0]
     assert s["peak_hsl_mw"] == pytest.approx(25.0, rel=0.02)
     assert s["peak_hsl_ratio"] == pytest.approx(0.25, rel=0.02)
+
+
+def test_missing_archive_day_is_marked_not_retried(tmp_path, monkeypatch, cfg):
+    class GapAPI(FakeAPI):
+        def get_60_day_sced_disclosure(self, date, process=False):
+            if date.day == 14:
+                self.sced_calls += 1
+                raise KeyError("archives")                        # what gridstatus raises for an unposted day
+            return super().get_60_day_sced_disclosure(date, process)
+
+    api = GapAPI()
+    monkeypatch.setattr(ercot_history, "_api", lambda: api)
+    monkeypatch.setattr(ercot_history, "raw_dir", lambda s: tmp_path / s)
+    (tmp_path / "ercot").mkdir()
+    monkeypatch.setattr(ercot_history.time, "sleep", lambda s: None)
+    x = pd.DataFrame({"ercot_settlement_point": ["NODE_A"]})
+    a, b = dt.date(2026, 7, 14), dt.date(2026, 7, 15)
+    r = ercot_history.run(a, b, x)
+    assert r["gaps"] == [a] and not r["failed"] and api.sced_calls == 2      # no retries on a gap
+    ercot_history.run(a, b, x)
+    assert api.sced_calls == 2                                                # marker honoured
+    ercot_history.run(a, b, x, retry_missing=True)
+    assert api.sced_calls == 3                                                # explicit retry only
