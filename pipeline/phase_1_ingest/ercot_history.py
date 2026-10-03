@@ -117,6 +117,31 @@ def reset_stale_spp(spp_dir: Path, keep: set[str]) -> int:
     return removed
 
 
+def drop_unreadable(folder: Path, newest: int = 40) -> list[Path]:
+    """A power cut or kill can leave a truncated Parquet file, which would count as 'cached' forever. Check the most
+    recently written day files and delete any that cannot be read so they are fetched again."""
+    import pyarrow.parquet as pq
+
+    bad = []
+    for f in sorted(folder.glob("*.parquet"), key=lambda p: p.stat().st_mtime)[-newest:]:
+        try:
+            pq.read_metadata(f)
+        except Exception:
+            f.unlink()
+            bad.append(f)
+    if bad:
+        log.warning("removed %d unreadable cached file(s) in %s (interrupted write): %s", len(bad), folder.name,
+                    [b.name for b in bad])
+    return bad
+
+
+def _save(df: pd.DataFrame, path: Path) -> None:
+    """Write to a temp file and rename, so an interruption never leaves a half-written day behind."""
+    tmp = path.with_suffix(".parquet.part")
+    df.to_parquet(tmp, index=False)
+    tmp.replace(path)
+
+
 def _cached(folder: Path, day: dt.date) -> bool:
     return (folder / f"{day}.parquet").exists() or (folder / f"{day}.none").exists()
 
@@ -133,6 +158,10 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
     keep = keep_locations(cfg, xwalk)
     sced_dir, spp_dir = raw_dir("ercot") / "sced_15min", raw_dir("ercot") / "spp_15min"
     sced_dir.mkdir(exist_ok=True), spp_dir.mkdir(exist_ok=True)
+    for d in (sced_dir, spp_dir):
+        drop_unreadable(d)
+        for part in d.glob("*.part"):
+            part.unlink()
     reset_stale_spp(spp_dir, keep)
     days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
     if retry_missing:
@@ -165,7 +194,7 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
                 log.warning("%s %s: empty after filtering", label, day)
             elif i == 1 or (since and since == until):
                 log.info("%s %s: %d rows, columns %s, e.g. %s", label, day, len(df), list(df.columns), df.iloc[0].to_dict())
-            df.to_parquet(folder / f"{day}.parquet", index=False)
+            _save(df, folder / f"{day}.parquet")
             time.sleep(mm["throttle_seconds"])
         if i % 10 == 0:
             log.info("fetched %d/%d days (last %s)", i, len(todo), day)

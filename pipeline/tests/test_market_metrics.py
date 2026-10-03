@@ -221,3 +221,22 @@ def test_missing_archive_day_is_marked_not_retried(tmp_path, monkeypatch, cfg):
     assert api.sced_calls == 2                                                # marker honoured
     ercot_history.run(a, b, x, retry_missing=True)
     assert api.sced_calls == 3                                                # explicit retry only
+
+
+def test_interrupted_write_is_detected_and_refetched(tmp_path, monkeypatch, cfg):
+    api = FakeAPI()
+    monkeypatch.setattr(ercot_history, "_api", lambda: api)
+    monkeypatch.setattr(ercot_history, "raw_dir", lambda s: tmp_path / s)
+    (tmp_path / "ercot").mkdir()
+    monkeypatch.setattr(ercot_history.time, "sleep", lambda s: None)
+    x = pd.DataFrame({"ercot_settlement_point": ["NODE_A"]})
+    day = dt.date(2026, 7, 15)
+    ercot_history.run(day, day, x)
+    f = tmp_path / "ercot" / "sced_15min" / f"{day}.parquet"
+    f.write_bytes(f.read_bytes()[:200])                           # simulate a power cut mid-write
+    (tmp_path / "ercot" / "spp_15min" / "2026-07-14.parquet.part").write_bytes(b"junk")
+    ercot_history.run(day, day, x)
+    assert api.sced_calls == 2 and api.spp_calls == 1             # SCED refetched, prices kept
+    assert not list((tmp_path / "ercot" / "spp_15min").glob("*.part"))
+    sced, _ = ercot_history.load_cached(day, day)
+    assert sced["gen_mwh"].sum() == pytest.approx(80.0)
