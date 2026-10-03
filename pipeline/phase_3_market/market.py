@@ -60,7 +60,7 @@ def report(summary: pd.DataFrame, plants: pd.DataFrame | None, cfg: dict, window
         "## Fleet distribution (plants with status ok)", "",
         "| metric | n | min | q25 | median | q75 | max |", "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for col, fmt in (("capture_rate", num), ("shape_capture", num), ("basis_ratio", num), ("curtailment_pct", pct),
+    for col, fmt in (("capture_rate", num), ("capture_rate_potential", num), ("shape_capture", num), ("basis_ratio", num), ("curtailment_pct", pct),
                      ("sced_net_cf", pct), ("sced_potential_cf", pct)):
         v = ok[col].dropna()
         stats = [v.min(), v.quantile(.25), v.median(), v.quantile(.75), v.max()] if len(v) else [np.nan] * 5
@@ -74,14 +74,14 @@ def report(summary: pd.DataFrame, plants: pd.DataFrame | None, cfg: dict, window
         f"- Fleet quartiles — curtailment_pct: {', '.join(f'{k} {pct(v)}' for k, v in qu.items()) or '—'}",
         "- Switch `scoring.breakpoint_mode` to `quantile` once these look sane (plan §3 change 5).", "",
         "## Plants", "",
-        "| EIA ID | Plant | County | Tier | MW | Months | Capture | Shape | Basis | Curtail | SCED CF | Potential CF | Peak HSL/MW | EIA-923 CF | Status |",
-        "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| EIA ID | Plant | County | Tier | MW | Months | Capture | Shape | Basis | Curtail | SCED CF | Potential CF | Peak HSL/MW | Peak last 3 mo | Pot. capture | EIA-923 CF | Status |",
+        "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for r in s.sort_values("capture_rate", na_position="last").itertuples():
         lines.append("| " + " | ".join([
             str(r.eia_id), str(getattr(r, "plant_name", "—")), str(getattr(r, "county", "—")), str(getattr(r, "tier", "—")),
             num(getattr(r, "ac_mw", np.nan), 1), str(r.metrics_window_months), num(r.capture_rate), num(r.shape_capture),
-            num(r.basis_ratio), pct(r.curtailment_pct), pct(r.sced_net_cf), pct(r.sced_potential_cf), num(r.peak_hsl_ratio),
+            num(r.basis_ratio), pct(r.curtailment_pct), pct(r.sced_net_cf), pct(r.sced_potential_cf), num(r.peak_hsl_ratio), num(r.peak_hsl_ratio_recent), num(r.capture_rate_potential),
             pct(getattr(r, "net_ac_cf", np.nan)), r.metrics_status + (" (shared unit)" if r.ercot_resource_shared else ""),
         ]) + " |")
     lines += ["", "## What to check by hand", "",

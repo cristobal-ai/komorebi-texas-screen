@@ -262,3 +262,25 @@ def test_day_with_missing_load_file_falls_back_to_gen_file(tmp_path, monkeypatch
     out = ercot_history.fetch_sced_day(ZipGapAPI(), dt.date(2026, 7, 15), cfg)
     assert out["gen_mwh"].sum() == pytest.approx(80.0)
     assert seen["start"] == pd.Timestamp("2026-09-13") and seen["csv"] is False   # posted 60 days after the operating day
+
+
+def test_potential_capture_not_flattered_by_curtailment(cfg):
+    """A plant curtailed in the cheap hours sells at a high price; potential capture prices what it could have sold."""
+    ts = pd.date_range("2026-07-15 12:00:00", periods=24, freq="5min")            # 2 h = 8 settlement intervals
+    cheap = np.arange(24) >= 12                                                 # second hour curtailed to zero
+    g = pd.DataFrame({
+        "SCED Time Stamp": ts.strftime("%m/%d/%Y %H:%M:%S"), "Repeated Hour Flag": "N", "Resource Name": "U", "Resource Type": "PVGR",
+        "HSL": 100.0, "Base Point": np.where(cheap, 0.0, 100.0), "Telemetered Net Output": np.where(cheap, 0.0, 100.0)})
+    sced = metrics.sced_to_15min(g, cfg)
+    idx = pd.date_range("2026-07-15 17:00", periods=8, freq="15min", tz="UTC")
+    rows = []
+    for loc, prices in (("HUB", [50] * 8), ("N", [60] * 4 + [-20] * 4)):
+        rows += [{"interval_start": t, "location": loc, "spp": p} for t, p in zip(idx, prices)]
+    cfg2 = {**cfg, "market_metrics": {**cfg["market_metrics"], "hub_reference": "HUB", "min_month_coverage": 0.0,
+                                       "min_gen_mwh_for_capture": 1}}
+    x = xw([(1, "U", "N", 100.0)])
+    ac = pd.Series({1: 100.0})
+    s = metrics.plant_summary(metrics.plant_monthly(metrics.unit_monthly(sced, pd.DataFrame(rows), x, cfg2), ac, cfg2), x, ac, cfg2).iloc[0]
+    assert s["capture_rate"] == pytest.approx(60 / 50)                          # delivered only in the 60 $/MWh hour
+    assert s["capture_rate_potential"] == pytest.approx(20 / 50)                # average of 60 and -20 over HSL
+    assert s["peak_hsl_ratio_recent"] == pytest.approx(s["peak_hsl_ratio"])

@@ -22,7 +22,9 @@ alter table public.plants
   add column sced_net_cf              double precision,
   add column sced_potential_cf        double precision,
   add column peak_hsl_mw              double precision,   -- highest HSL in the window (sum of unit peaks)
-  add column peak_hsl_ratio           double precision;   -- peak_hsl_mw / ac_mw: low = derated or part-built
+  add column peak_hsl_ratio           double precision,   -- peak_hsl_mw / ac_mw: low = derated or part-built
+  add column capture_rate_potential   double precision,   -- capture_rate weighted by HSL (not flattered by curtailment)
+  add column peak_hsl_ratio_recent    double precision;   -- peak_hsl_ratio over the last 3 full months: a recent outage
 
 create table public.plant_metrics_monthly (
   eia_id              integer not null references public.plants (eia_id) on delete cascade,
@@ -41,6 +43,7 @@ create table public.plant_metrics_monthly (
   sced_net_cf         double precision,
   sced_potential_cf   double precision,
   peak_hsl_mw         double precision,
+  capture_rate_potential double precision,
   run_id              text not null,
   primary key (eia_id, month)
 );

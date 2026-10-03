@@ -10,6 +10,9 @@ Pure functions (no network); `pipeline/phase_1_ingest/ercot_history.py` fetches 
 Definitions (config.yaml → market_metrics):
     curtailment_pct = Σ max(HSL − Base Point, 0)·Δt / Σ HSL·Δt
     capture_rate    = (Σ gen·SPP_node / Σ gen) / mean(SPP_hub)   over the plant's own SCED intervals
+    capture_rate_potential = same weighted by HSL instead of generation: the price the plant could have sold at.
+        Curtailment removes output in negative-price hours, so a heavily curtailed plant's capture_rate is flattered;
+        the potential version is not.
     shape_capture   = (Σ gen·SPP_hub / Σ gen) / mean(SPP_hub)
     basis_ratio     = Σ gen·SPP_node / Σ gen·SPP_hub             (capture_rate = shape_capture × basis_ratio)
 
@@ -29,7 +32,8 @@ from pipeline.common import find_col, load_config
 log = logging.getLogger(__name__)
 
 TZ = "US/Central"
-SUM_COLS = ["gen_mwh", "hsl_mwh", "curtailed_mwh", "gen_priced_mwh", "rev_node", "rev_hub", "hub_sum", "hub_n"]
+SUM_COLS = ["gen_mwh", "hsl_mwh", "curtailed_mwh", "gen_priced_mwh", "rev_node", "rev_hub", "hsl_priced_mwh", "rev_node_pot", "rev_hub_pot",
+            "hub_sum", "hub_n"]
 
 
 def sced_to_15min(gen: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
@@ -126,11 +130,16 @@ def unit_monthly(sced15: pd.DataFrame, spp15: pd.DataFrame, xwalk: pd.DataFrame,
         u["gen_priced_mwh"] = u["gen_mwh"].where(priced, 0.0)
         u["rev_node"] = (u["gen_mwh"] * u["node"]).where(priced, 0.0)
         u["rev_hub"] = (u["gen_mwh"] * u["hub"]).where(priced, 0.0)
+        u["hsl_priced_mwh"] = u["hsl_mwh"].where(priced, 0.0)           # price weighted by what the plant could have sold
+        u["rev_node_pot"] = (u["hsl_mwh"] * u["node"]).where(priced, 0.0)
+        u["rev_hub_pot"] = (u["hsl_mwh"] * u["hub"]).where(priced, 0.0)
         u["hub_sum"] = u["hub"].fillna(0.0)
         u["hub_n"] = u["hub"].notna().astype(int)
         g = u.groupby("month").agg(
             gen_mwh=("gen_mwh", "sum"), hsl_mwh=("hsl_mwh", "sum"), curtailed_mwh=("curtailed_mwh", "sum"),
             gen_priced_mwh=("gen_priced_mwh", "sum"), rev_node=("rev_node", "sum"), rev_hub=("rev_hub", "sum"),
+            hsl_priced_mwh=("hsl_priced_mwh", "sum"), rev_node_pot=("rev_node_pot", "sum"),
+            rev_hub_pot=("rev_hub_pot", "sum"),
             hub_sum=("hub_sum", "sum"), hub_n=("hub_n", "sum"), hours=("hours", "sum"),
             days=("date", "nunique"), peak_hsl_mw=("hsl_mw", "max"),
         ).reset_index()
@@ -166,6 +175,7 @@ def plant_monthly(units: pd.DataFrame, ac_mw: pd.Series, cfg: dict | None = None
     g["node_gen_wtd_spp"], g["hub_gen_wtd_spp"] = node_w, hub_w
     g["curtailment_pct"] = g["curtailed_mwh"] / g["hsl_mwh"].replace(0, np.nan)
     g["capture_rate"] = node_w / hub_avg
+    g["capture_rate_potential"] = g["rev_node_pot"] / g["hsl_priced_mwh"].replace(0, np.nan) / hub_avg
     g["shape_capture"] = hub_w / hub_avg
     g["basis_ratio"] = g["rev_node"] / g["rev_hub"].replace(0, np.nan)
     ac = g["eia_id"].map(ac_mw)
@@ -201,16 +211,21 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
             metrics_window_months=("month", "nunique"), window_start=("month", "min"), window_end=("month", "max"),
             gen_mwh=("gen_mwh", "sum"), hsl_mwh=("hsl_mwh", "sum"), curtailed_mwh=("curtailed_mwh", "sum"),
             gen_priced_mwh=("gen_priced_mwh", "sum"), rev_node=("rev_node", "sum"), rev_hub=("rev_hub", "sum"),
+            hsl_priced_mwh=("hsl_priced_mwh", "sum"), rev_node_pot=("rev_node_pot", "sum"),
             hub_sum=("hub_sum", "sum"), hub_n=("hub_n", "sum"), hours=("hours", "sum"),
             peak_hsl_mw=("peak_hsl_mw", "max"),
         ).reset_index()
+        recent = (full.sort_values("month").groupby("eia_id").tail(3).groupby("eia_id")["peak_hsl_mw"].max()
+                  .rename("peak_hsl_mw_recent").reset_index())
+        agg = agg.merge(recent, on="eia_id", how="left")
         seen = m.groupby("eia_id")["month"].nunique().rename("months_seen").reset_index()
         out = out.merge(agg, on="eia_id", how="left").merge(seen, on="eia_id", how="left")
     else:
         out["metrics_window_months"] = np.nan
 
     for c in ["metrics_window_months", "window_start", "window_end", "gen_mwh", "hsl_mwh", "curtailed_mwh",
-              "gen_priced_mwh", "rev_node", "rev_hub", "hub_sum", "hub_n", "hours", "months_seen", "peak_hsl_mw"]:
+              "gen_priced_mwh", "rev_node", "rev_hub", "hsl_priced_mwh", "rev_node_pot", "hub_sum", "hub_n", "hours",
+              "months_seen", "peak_hsl_mw", "peak_hsl_mw_recent"]:
         if c not in out:
             out[c] = np.nan
     ac = out["eia_id"].map(ac_mw)
@@ -220,9 +235,11 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
     out["hub_avg_spp"] = hub_avg
     out["node_gen_wtd_spp"] = (out["rev_node"] / out["gen_priced_mwh"].replace(0, np.nan)).where(enough)
     out["capture_rate"] = (out["node_gen_wtd_spp"] / hub_avg).where(enough)
+    out["capture_rate_potential"] = (out["rev_node_pot"] / out["hsl_priced_mwh"].replace(0, np.nan) / hub_avg).where(enough)
     out["shape_capture"] = (out["rev_hub"] / out["gen_priced_mwh"].replace(0, np.nan) / hub_avg).where(enough)
     out["basis_ratio"] = (out["rev_node"] / out["rev_hub"].replace(0, np.nan)).where(enough)
     out["peak_hsl_ratio"] = out["peak_hsl_mw"] / ac           # highest HSL seen ÷ AC nameplate: low = derated or part-built
+    out["peak_hsl_ratio_recent"] = out["peak_hsl_mw_recent"] / ac   # same, last 3 full months: a recent outage shows here
     out["sced_net_cf"] = out["gen_mwh"] / (ac * out["hours"].replace(0, np.nan))
     out["sced_potential_cf"] = out["hsl_mwh"] / (ac * out["hours"].replace(0, np.nan))
 
@@ -239,4 +256,5 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
         [out["metrics_status"] == "no_ercot_resource", out["metrics_status"].isin(["no_sced_data", "no_full_months"])],
         ["none", "none"], default="full")
     out["metrics_window_months"] = out["metrics_window_months"].fillna(0).astype(int)
-    return out.drop(columns=["gen_priced_mwh", "rev_node", "rev_hub", "hub_sum", "hub_n", "hours"])
+    return out.drop(columns=["gen_priced_mwh", "rev_node", "rev_hub", "hsl_priced_mwh", "rev_node_pot", "hub_sum", "hub_n",
+                             "hours", "peak_hsl_mw_recent"])
