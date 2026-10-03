@@ -172,3 +172,19 @@ def test_tz_aware_sced_timestamps_accepted(cfg):
     g = metrics.sced_to_15min(r, cfg)
     assert g["gen_mwh"].sum() == pytest.approx(80.0)
     assert g["interval_start"].iloc[0] == pd.Timestamp("2026-07-15 17:00", tz="UTC")
+
+
+def test_new_settlement_point_invalidates_cached_prices(tmp_path, monkeypatch, cfg):
+    api = FakeAPI()
+    monkeypatch.setattr(ercot_history, "_api", lambda: api)
+    monkeypatch.setattr(ercot_history, "raw_dir", lambda s: tmp_path / s)
+    (tmp_path / "ercot").mkdir()
+    monkeypatch.setattr(ercot_history.time, "sleep", lambda s: None)
+    day = dt.date(2026, 7, 15)
+    ercot_history.run(day, day, pd.DataFrame({"ercot_settlement_point": ["NODE_A"]}))
+    ercot_history.run(day, day, pd.DataFrame({"ercot_settlement_point": ["NODE_A"]}))
+    assert api.spp_calls == 1 and api.sced_calls == 1             # nothing new → cache hit
+    ercot_history.run(day, day, pd.DataFrame({"ercot_settlement_point": ["NODE_A", "NODE_B"]}))
+    assert api.spp_calls == 2 and api.sced_calls == 1             # prices refetched, SCED kept
+    _, spp = ercot_history.load_cached(day, day)
+    assert "NODE_B" in set(spp["location"])

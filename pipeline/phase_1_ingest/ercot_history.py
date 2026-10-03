@@ -13,6 +13,7 @@ Needs ERCOT_API_USERNAME / _PASSWORD / _SUBSCRIPTION_KEY (pipeline/.env). Run it
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import os
 import time
@@ -89,6 +90,27 @@ def _with_retries(fn, retries: int, pause: float):
             time.sleep(wait)
 
 
+def reset_stale_spp(spp_dir: Path, keep: set[str]) -> int:
+    """Price days only hold the locations asked for at fetch time. If the crosswalk now needs a node that was not
+    kept (a new plant, a corrected settlement point), drop the cached price days so they are fetched again.
+    SCED days are untouched. Returns the number of day files removed."""
+    marker = spp_dir / "_keep.json"
+    try:
+        recorded = set(json.loads(marker.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        recorded = set()
+    removed = 0
+    if keep - recorded:
+        for f in spp_dir.glob("*.parquet"):
+            f.unlink()
+            removed += 1
+        if removed:
+            log.warning("settlement points added since the price cache was built (%s): %d cached price days removed "
+                        "and will be fetched again", sorted(keep - recorded)[:6], removed)
+    marker.write_text(json.dumps(sorted(keep | recorded)), encoding="utf-8")
+    return removed
+
+
 def _cached(folder: Path, day: dt.date) -> bool:
     return (folder / f"{day}.parquet").exists() or (folder / f"{day}.none").exists()
 
@@ -104,6 +126,7 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
     keep = keep_locations(cfg, xwalk)
     sced_dir, spp_dir = raw_dir("ercot") / "sced_15min", raw_dir("ercot") / "spp_15min"
     sced_dir.mkdir(exist_ok=True), spp_dir.mkdir(exist_ok=True)
+    reset_stale_spp(spp_dir, keep)
     days = [start + dt.timedelta(days=i) for i in range((end - start).days + 1)]
     todo = [d for d in days if not (_cached(sced_dir, d) and _cached(spp_dir, d))]
     log.info("3b window %s → %s: %d days, %d already cached, %d to fetch", start, end, len(days), len(days) - len(todo), len(todo))
