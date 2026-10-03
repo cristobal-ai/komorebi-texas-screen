@@ -40,7 +40,22 @@ PLANT_COLUMNS = [
     "cf_year", "net_mwh", "net_ac_cf", "cf_series_resolution", "months_reported", "cf_note",
     "run_id",
 ]
-INT_COLUMNS = {"eia_id", "n_generators", "year_uspvdb", "n_polygons", "eia860_year", "cf_year", "months_reported"}
+# Phase 3b (migration *_plant_metrics.sql). Sent only when data/plant_metrics.parquet exists, so a load without
+# 3b never nulls them. Left side = parquet column, right side = plants column.
+METRIC_RENAME = {"resources": "ercot_resources", "settlement_points": "ercot_settlement_points",
+                 "window_start": "metrics_window_start", "window_end": "metrics_window_end"}
+METRIC_COLUMNS = [
+    "ercot_resources", "ercot_settlement_points", "ercot_resource_shared", "metrics_status", "sced_coverage",
+    "metrics_window_months", "metrics_window_start", "metrics_window_end", "curtailment_pct", "capture_rate",
+    "shape_capture", "basis_ratio", "hub_avg_spp", "node_gen_wtd_spp", "sced_net_cf", "sced_potential_cf",
+]
+MONTHLY_TABLE = "plant_metrics_monthly"
+MONTHLY_COLUMNS = [
+    "eia_id", "month", "n_units", "days", "gen_mwh", "hsl_mwh", "curtailed_mwh", "curtailment_pct", "capture_rate",
+    "shape_capture", "basis_ratio", "hub_avg_spp", "node_gen_wtd_spp", "sced_net_cf", "sced_potential_cf", "run_id",
+]
+INT_COLUMNS = {"eia_id", "n_generators", "year_uspvdb", "n_polygons", "eia860_year", "cf_year", "months_reported",
+               "metrics_window_months", "n_units", "days"}
 
 
 def headers(key: str) -> dict:
@@ -69,24 +84,61 @@ def _clean(v, col: str):
     return v
 
 
-def to_rows(plants: gpd.GeoDataFrame, run_id: str) -> list[dict]:
+def to_rows(plants: gpd.GeoDataFrame, run_id: str, metrics: pd.DataFrame | None = None) -> list[dict]:
     p = plants[plants["filter_status"].isin(LOADED_STATUSES)].copy()
     p["run_id"] = run_id
-    for c in PLANT_COLUMNS:
+    cols = list(PLANT_COLUMNS)
+    if metrics is not None:
+        m = metrics.rename(columns=METRIC_RENAME)
+        p = p.drop(columns=[c for c in METRIC_COLUMNS if c in p.columns]).merge(
+            m[["eia_id", *[c for c in METRIC_COLUMNS if c in m.columns]]], on="eia_id", how="left")
+        cols += METRIC_COLUMNS
+    for c in cols:
         if c not in p.columns:
             p[c] = None
     geoms = p.geometry.to_crs(4326) if p.geometry.crs is not None else p.geometry
     rows = []
     for (_, r), g in zip(p.iterrows(), geoms):
-        row = {c: _clean(r[c], c) for c in PLANT_COLUMNS}
+        row = {c: _clean(r[c], c) for c in cols}
         row["geom"] = None if g is None or g.is_empty else f"SRID=4326;{g.wkt}"
         rows.append(row)
     return rows
 
 
-def load(plants: gpd.GeoDataFrame, url: str, key: str, run_id: str | None = None, session=requests) -> int:
+def monthly_rows(monthly: pd.DataFrame, eia_ids: set[int], run_id: str) -> list[dict]:
+    m = monthly[monthly["eia_id"].isin(eia_ids)].copy()
+    m["run_id"] = run_id
+    return [{c: _clean(r[c], c) for c in MONTHLY_COLUMNS} for _, r in m.iterrows()]
+
+
+def load_monthly(monthly: pd.DataFrame, eia_ids: set[int], url: str, key: str, run_id: str, session=requests) -> int:
+    """Upsert plant_metrics_monthly for the loaded plants, drop rows from earlier runs, verify the count."""
+    rows = monthly_rows(monthly, eia_ids, run_id)
+    base = f"{url.rstrip('/')}/rest/v1/{MONTHLY_TABLE}"
+    h = headers(key) | {"Content-Type": "application/json"}
+    for i in range(0, len(rows), 500):
+        r = session.post(f"{base}?on_conflict=eia_id,month", json=rows[i:i + 500], timeout=60,
+                         headers=h | {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        if not r.ok:
+            raise RuntimeError(f"monthly upsert batch {i // 500} failed: HTTP {r.status_code} {r.text[:500]}")
+    r = session.delete(f"{base}?run_id=neq.{run_id}", headers=h | {"Prefer": "return=minimal"}, timeout=60)
+    if not r.ok:
+        raise RuntimeError(f"monthly stale-row delete failed: HTTP {r.status_code} {r.text[:500]}")
+    r = session.get(f"{base}?select=eia_id&run_id=eq.{run_id}", timeout=60,
+                    headers=h | {"Prefer": "count=exact", "Range": "0-0"})
+    if not r.ok:
+        raise RuntimeError(f"monthly count check failed: HTTP {r.status_code} {r.text[:500]}")
+    n = int(r.headers.get("Content-Range", "*/-1").split("/")[-1])
+    if n != len(rows):
+        raise RuntimeError(f"monthly row count mismatch: sent {len(rows)}, table has {n} for run {run_id}")
+    log.info("Supabase %s: %d rows loaded (run %s)", MONTHLY_TABLE, n, run_id)
+    return n
+
+
+def load(plants: gpd.GeoDataFrame, url: str, key: str, run_id: str | None = None, session=requests,
+         metrics: pd.DataFrame | None = None, monthly: pd.DataFrame | None = None) -> int:
     run_id = run_id or dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    rows = to_rows(plants, run_id)
+    rows = to_rows(plants, run_id, metrics)
     base = f"{url.rstrip('/')}/rest/v1/{TABLE}"
     h = headers(key) | {"Content-Type": "application/json"}
     for i in range(0, len(rows), BATCH):
@@ -105,6 +157,8 @@ def load(plants: gpd.GeoDataFrame, url: str, key: str, run_id: str | None = None
     if n != len(rows):
         raise RuntimeError(f"row count mismatch after load: sent {len(rows)}, table has {n} for run {run_id}")
     log.info("Supabase %s: %d rows loaded (run %s)", TABLE, n, run_id)
+    if monthly is not None and len(monthly):
+        load_monthly(monthly, {r["eia_id"] for r in rows}, url, key, run_id, session)
     return n
 
 
@@ -114,4 +168,9 @@ def run() -> int:
     key = (os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
     if not url or not key:
         raise SystemExit("SUPABASE_URL and SUPABASE_SECRET_KEY must be set (pipeline/.env or environment)")
-    return load(gpd.read_parquet(DATA_DIR / "plants.parquet"), url, key)
+    mp, sp = DATA_DIR / "plant_metrics.parquet", DATA_DIR / "plant_metrics_monthly.parquet"
+    metrics = pd.read_parquet(mp) if mp.exists() else None
+    monthly = pd.read_parquet(sp) if sp.exists() else None
+    if metrics is None:
+        log.info("no plant_metrics.parquet — loading the plant master without phase 3b columns")
+    return load(gpd.read_parquet(DATA_DIR / "plants.parquet"), url, key, metrics=metrics, monthly=monthly)

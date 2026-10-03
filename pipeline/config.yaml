@@ -205,6 +205,22 @@ market_window:
   months: 36
   api_history_floor: 2023-12-11    # ERCOT Public API — earlier data needs MIS archive backfill
 
+# Phase 3b — curtailment and capture rate from the 60-day SCED disclosure and 15-minute real-time SPP.
+#   curtailment_pct = Σ max(HSL − Base Point, 0)·Δt / Σ HSL·Δt          (per SCED interval, PVGR resources)
+#   capture_rate    = (Σ gen·SPP_node / Σ gen) / time-average SPP_hub   (hub = hub_reference, same intervals)
+#   shape_capture   = same with the hub price at the plant's generation hours  (solar-shape discount only)
+#   basis_ratio     = Σ gen·SPP_node / Σ gen·SPP_hub                      (location discount only; capture = shape × basis)
+market_metrics:
+  sced_lag_days: 62                # latest operating day = today − lag (disclosure posts 60 days late)
+  sced_interval_minutes_default: 5 # used for the last interval of a day and any gap-less resource
+  max_interval_minutes: 15         # a longer gap between SCED runs is treated as a gap, not curtailment
+  hub_reference: HB_HUBAVG
+  price_locations_extra: [HB_NORTH, HB_SOUTH, HB_WEST, HB_HOUSTON, HB_BUSAVG]
+  min_month_coverage: 0.90         # share of a month's days with SCED data for the month to enter the summary
+  min_gen_mwh_for_capture: 100     # below this a plant gets no capture_rate (price-weighting on nothing)
+  throttle_seconds: 1.0            # pause between ERCOT API calls
+  retries: 3
+
 caveat_flags:                  # displayed on every dossier; never scored
   - load_import_not_screenable
   - sb6_large_load_risk

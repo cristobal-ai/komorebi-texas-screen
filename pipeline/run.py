@@ -4,10 +4,13 @@
     python -m pipeline.run --phase 2 --county Pecos   # plant master + Pecos hand-check report
     python -m pipeline.run --phase 1-2 --county Pecos
     python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
+    python -m pipeline.run --phase 3b                 # 3b: SCED + SPP history → curtailment, capture rate
+    python -m pipeline.run --phase 3b --since 2026-07-15 --until 2026-07-15   # one-day probe
 """
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import logging
 
 import geopandas as gpd
@@ -30,10 +33,19 @@ def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="pipeline.run")
     ap.add_argument("--phase", default="all", help="all | N | N-M")
     ap.add_argument("--county", default="", help="write a hand-check report for this county after phase 2")
+    ap.add_argument("--since", type=dt.date.fromisoformat, default=None, help="3b: first operating day (YYYY-MM-DD)")
+    ap.add_argument("--until", type=dt.date.fromisoformat, default=None, help="3b: last operating day")
+    ap.add_argument("--no-fetch", action="store_true", help="3b: compute from cached days only")
     ap.add_argument("--load", action="store_true", help="after phase 2, write pass/review plants to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     load_env()
+
+    if args.phase == "3b":
+        from pipeline.phase_3_market import market
+
+        market.run(args.since, args.until, fetch=not args.no_fetch)
+        return
 
     for n in _phases(args.phase):
         if n not in IMPLEMENTED:
