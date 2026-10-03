@@ -164,3 +164,11 @@ def test_ingest_is_resumable_and_filters_locations(tmp_path, monkeypatch, cfg):
     sced, spp = ercot_history.load_cached(a, b)
     assert set(spp["location"]) == {"HB_HUBAVG", "NODE_A"}        # NODE_B not in the crosswalk → dropped at ingest
     assert sced["gen_mwh"].sum() == pytest.approx(160.0)
+
+
+def test_tz_aware_sced_timestamps_accepted(cfg):
+    r = sced_rows()
+    r["SCED Time Stamp"] = pd.to_datetime(r["SCED Time Stamp"]).dt.tz_localize("US/Central")
+    g = metrics.sced_to_15min(r, cfg)
+    assert g["gen_mwh"].sum() == pytest.approx(80.0)
+    assert g["interval_start"].iloc[0] == pd.Timestamp("2026-07-15 17:00", tz="UTC")

@@ -59,12 +59,16 @@ def sced_to_15min(gen: pd.DataFrame, cfg: dict | None = None) -> pd.DataFrame:
         g[dst] = pd.to_numeric(g[src], errors="coerce")
     g = g.dropna(subset=["_ts"])
 
-    if rep:
-        second_pass = g[rep].astype(str).str.strip().str.upper().eq("Y").to_numpy()
-        amb: object = ~second_pass          # True = DST (first pass), False = standard time (second pass)
+    if g["_ts"].dt.tz is not None:
+        # gridstatus may already hand back tz-aware stamps; they are unambiguous, so convert rather than localize
+        local = g["_ts"].dt.tz_convert("UTC")
     else:
-        amb = "NaT"
-    local = g["_ts"].dt.tz_localize(TZ, ambiguous=amb, nonexistent="NaT")
+        if rep:
+            second_pass = g[rep].astype(str).str.strip().str.upper().eq("Y").to_numpy()
+            amb: object = ~second_pass          # True = DST (first pass), False = standard time (second pass)
+        else:
+            amb = "NaT"
+        local = g["_ts"].dt.tz_localize(TZ, ambiguous=amb, nonexistent="NaT")
     bad = local.isna()
     if bad.any():
         log.warning("SCED: dropped %d rows with ambiguous/non-existent local time", int(bad.sum()))
