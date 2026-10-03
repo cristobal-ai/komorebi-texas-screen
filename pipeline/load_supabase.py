@@ -48,11 +48,12 @@ METRIC_COLUMNS = [
     "ercot_resources", "ercot_settlement_points", "ercot_resource_shared", "metrics_status", "sced_coverage",
     "metrics_window_months", "metrics_window_start", "metrics_window_end", "curtailment_pct", "capture_rate",
     "shape_capture", "basis_ratio", "hub_avg_spp", "node_gen_wtd_spp", "sced_net_cf", "sced_potential_cf",
+    "peak_hsl_mw", "peak_hsl_ratio",
 ]
 MONTHLY_TABLE = "plant_metrics_monthly"
 MONTHLY_COLUMNS = [
     "eia_id", "month", "n_units", "days", "gen_mwh", "hsl_mwh", "curtailed_mwh", "curtailment_pct", "capture_rate",
-    "shape_capture", "basis_ratio", "hub_avg_spp", "node_gen_wtd_spp", "sced_net_cf", "sced_potential_cf", "run_id",
+    "shape_capture", "basis_ratio", "hub_avg_spp", "node_gen_wtd_spp", "sced_net_cf", "sced_potential_cf", "peak_hsl_mw", "run_id",
 ]
 INT_COLUMNS = {"eia_id", "n_generators", "year_uspvdb", "n_polygons", "eia860_year", "cf_year", "months_reported",
                "metrics_window_months", "n_units", "days"}

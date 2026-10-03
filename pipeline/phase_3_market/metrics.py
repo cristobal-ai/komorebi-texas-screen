@@ -119,6 +119,7 @@ def unit_monthly(sced15: pd.DataFrame, spp15: pd.DataFrame, xwalk: pd.DataFrame,
         u["hub"] = u["interval_start"].map(hub)
         u["node"] = u["interval_start"].map(node) if len(node) else np.nan
         local = u["interval_start"].dt.tz_convert(TZ)
+        u["hsl_mw"] = u["hsl_mwh"] / u["hours"].replace(0, np.nan)
         u["month"] = local.dt.strftime("%Y-%m")
         u["date"] = local.dt.date
         priced = u["node"].notna() & u["hub"].notna()
@@ -131,7 +132,7 @@ def unit_monthly(sced15: pd.DataFrame, spp15: pd.DataFrame, xwalk: pd.DataFrame,
             gen_mwh=("gen_mwh", "sum"), hsl_mwh=("hsl_mwh", "sum"), curtailed_mwh=("curtailed_mwh", "sum"),
             gen_priced_mwh=("gen_priced_mwh", "sum"), rev_node=("rev_node", "sum"), rev_hub=("rev_hub", "sum"),
             hub_sum=("hub_sum", "sum"), hub_n=("hub_n", "sum"), hours=("hours", "sum"),
-            days=("date", "nunique"),
+            days=("date", "nunique"), peak_hsl_mw=("hsl_mw", "max"),
         ).reset_index()
         g.insert(0, "resource_name", res.strip())
         g.insert(0, "eia_id", int(x.eia_plant_id))
@@ -139,7 +140,7 @@ def unit_monthly(sced15: pd.DataFrame, spp15: pd.DataFrame, xwalk: pd.DataFrame,
         g["node_priced"] = g["gen_priced_mwh"] > 0
         rows.append(g)
     if not rows:
-        return pd.DataFrame(columns=["eia_id", "resource_name", "month", *SUM_COLS, "hours", "days", "settlement_point"])
+        return pd.DataFrame(columns=["eia_id", "resource_name", "month", *SUM_COLS, "hours", "days", "peak_hsl_mw", "settlement_point"])
     return pd.concat(rows, ignore_index=True)
 
 
@@ -157,7 +158,7 @@ def plant_monthly(units: pd.DataFrame, ac_mw: pd.Series, cfg: dict | None = None
         return pd.DataFrame()
     keys = ["eia_id", "month"]
     g = units.groupby(keys).agg(**{c: (c, "sum") for c in SUM_COLS}, hours=("hours", "max"), days=("days", "max"),
-                                n_units=("resource_name", "nunique")).reset_index()
+                                peak_hsl_mw=("peak_hsl_mw", "sum"), n_units=("resource_name", "nunique")).reset_index()
     hub_avg = g["hub_sum"] / g["hub_n"].replace(0, np.nan)
     g["hub_avg_spp"] = hub_avg
     node_w = g["rev_node"] / g["gen_priced_mwh"].replace(0, np.nan)
@@ -201,6 +202,7 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
             gen_mwh=("gen_mwh", "sum"), hsl_mwh=("hsl_mwh", "sum"), curtailed_mwh=("curtailed_mwh", "sum"),
             gen_priced_mwh=("gen_priced_mwh", "sum"), rev_node=("rev_node", "sum"), rev_hub=("rev_hub", "sum"),
             hub_sum=("hub_sum", "sum"), hub_n=("hub_n", "sum"), hours=("hours", "sum"),
+            peak_hsl_mw=("peak_hsl_mw", "max"),
         ).reset_index()
         seen = m.groupby("eia_id")["month"].nunique().rename("months_seen").reset_index()
         out = out.merge(agg, on="eia_id", how="left").merge(seen, on="eia_id", how="left")
@@ -208,7 +210,7 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
         out["metrics_window_months"] = np.nan
 
     for c in ["metrics_window_months", "window_start", "window_end", "gen_mwh", "hsl_mwh", "curtailed_mwh",
-              "gen_priced_mwh", "rev_node", "rev_hub", "hub_sum", "hub_n", "hours", "months_seen"]:
+              "gen_priced_mwh", "rev_node", "rev_hub", "hub_sum", "hub_n", "hours", "months_seen", "peak_hsl_mw"]:
         if c not in out:
             out[c] = np.nan
     ac = out["eia_id"].map(ac_mw)
@@ -220,6 +222,7 @@ def plant_summary(monthly: pd.DataFrame, xwalk: pd.DataFrame, ac_mw: pd.Series, 
     out["capture_rate"] = (out["node_gen_wtd_spp"] / hub_avg).where(enough)
     out["shape_capture"] = (out["rev_hub"] / out["gen_priced_mwh"].replace(0, np.nan) / hub_avg).where(enough)
     out["basis_ratio"] = (out["rev_node"] / out["rev_hub"].replace(0, np.nan)).where(enough)
+    out["peak_hsl_ratio"] = out["peak_hsl_mw"] / ac           # highest HSL seen ÷ AC nameplate: low = derated or part-built
     out["sced_net_cf"] = out["gen_mwh"] / (ac * out["hours"].replace(0, np.nan))
     out["sced_potential_cf"] = out["hsl_mwh"] / (ac * out["hours"].replace(0, np.nan))
 

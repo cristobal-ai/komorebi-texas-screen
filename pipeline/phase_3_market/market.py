@@ -74,14 +74,14 @@ def report(summary: pd.DataFrame, plants: pd.DataFrame | None, cfg: dict, window
         f"- Fleet quartiles — curtailment_pct: {', '.join(f'{k} {pct(v)}' for k, v in qu.items()) or '—'}",
         "- Switch `scoring.breakpoint_mode` to `quantile` once these look sane (plan §3 change 5).", "",
         "## Plants", "",
-        "| EIA ID | Plant | County | Tier | MW | Months | Capture | Shape | Basis | Curtail | SCED CF | Potential CF | EIA-923 CF | Status |",
-        "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+        "| EIA ID | Plant | County | Tier | MW | Months | Capture | Shape | Basis | Curtail | SCED CF | Potential CF | Peak HSL/MW | EIA-923 CF | Status |",
+        "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ]
     for r in s.sort_values("capture_rate", na_position="last").itertuples():
         lines.append("| " + " | ".join([
             str(r.eia_id), str(getattr(r, "plant_name", "—")), str(getattr(r, "county", "—")), str(getattr(r, "tier", "—")),
             num(getattr(r, "ac_mw", np.nan), 1), str(r.metrics_window_months), num(r.capture_rate), num(r.shape_capture),
-            num(r.basis_ratio), pct(r.curtailment_pct), pct(r.sced_net_cf), pct(r.sced_potential_cf),
+            num(r.basis_ratio), pct(r.curtailment_pct), pct(r.sced_net_cf), pct(r.sced_potential_cf), num(r.peak_hsl_ratio),
             pct(getattr(r, "net_ac_cf", np.nan)), r.metrics_status + (" (shared unit)" if r.ercot_resource_shared else ""),
         ]) + " |")
     lines += ["", "## What to check by hand", "",

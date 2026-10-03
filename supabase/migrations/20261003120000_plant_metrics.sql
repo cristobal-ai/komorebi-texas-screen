@@ -20,7 +20,9 @@ alter table public.plants
   add column hub_avg_spp              double precision,
   add column node_gen_wtd_spp         double precision,
   add column sced_net_cf              double precision,
-  add column sced_potential_cf        double precision;
+  add column sced_potential_cf        double precision,
+  add column peak_hsl_mw              double precision,   -- highest HSL in the window (sum of unit peaks)
+  add column peak_hsl_ratio           double precision;   -- peak_hsl_mw / ac_mw: low = derated or part-built
 
 create table public.plant_metrics_monthly (
   eia_id              integer not null references public.plants (eia_id) on delete cascade,
@@ -38,6 +40,7 @@ create table public.plant_metrics_monthly (
   node_gen_wtd_spp    double precision,
   sced_net_cf         double precision,
   sced_potential_cf   double precision,
+  peak_hsl_mw         double precision,
   run_id              text not null,
   primary key (eia_id, month)
 );

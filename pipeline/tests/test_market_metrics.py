@@ -188,3 +188,13 @@ def test_new_settlement_point_invalidates_cached_prices(tmp_path, monkeypatch, c
     assert api.spp_calls == 2 and api.sced_calls == 1             # prices refetched, SCED kept
     _, spp = ercot_history.load_cached(day, day)
     assert "NODE_B" in set(spp["location"])
+
+
+def test_peak_hsl_ratio_flags_derated_plant(cfg):
+    sced = metrics.sced_to_15min(sced_rows(hsl=25.0, bp=25.0, tno=25.0), cfg)     # 25 MW capability on a 100 MW plant
+    x = xw([(1, "SOL_UNIT1", "NODE_A", 100.0)])
+    ac = pd.Series({1: 100.0})
+    cfg2 = {**cfg, "market_metrics": {**cfg["market_metrics"], "min_month_coverage": 0.0, "min_gen_mwh_for_capture": 1}}
+    s = metrics.plant_summary(metrics.plant_monthly(metrics.unit_monthly(sced, spp_frame(), x, cfg2), ac, cfg2), x, ac, cfg2).iloc[0]
+    assert s["peak_hsl_mw"] == pytest.approx(25.0, rel=0.02)
+    assert s["peak_hsl_ratio"] == pytest.approx(0.25, rel=0.02)
