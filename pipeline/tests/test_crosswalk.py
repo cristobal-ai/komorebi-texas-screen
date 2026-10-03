@@ -212,3 +212,19 @@ def test_review_report_handles_text_columns_from_the_csv(plants, cdr_raw, sced, 
     out = apply(as_text, "CR", "2026-10-02", accept_medium=True)
     text = review_report(out, tmp_path / "r.md").read_text(encoding="utf-8-sig")
     assert "| medium | CR 2026-10-02 |" in text and "| yes |" in text and "150.0" in text
+
+
+def test_verify_set_node_sets_point_for_resource_rows():
+    import pandas as pd
+
+    from pipeline.phase_3_market import verify
+
+    x = pd.DataFrame({"eia_plant_id": ["1", "1", "2"], "ercot_resource_name": ["A_U1", "A_U2", "B_U1"],
+                      "ercot_settlement_point": [None, None, "B_ALL"], "county": "X", "verified_by": None,
+                      "verified_on": None, "match_confidence": "high"})
+    out = verify.apply(x, "CR", "2026-10-03", set_nodes=["A_U1=A_ALL", "A_U2=A_ALL"])
+    got = out.set_index("ercot_resource_name")["ercot_settlement_point"].to_dict()
+    assert got == {"A_U1": "A_ALL", "A_U2": "A_ALL", "B_U1": "B_ALL"}
+    import pytest
+    with pytest.raises(SystemExit):
+        verify.apply(x, "CR", "2026-10-03", set_nodes=["NOPE=Z"])

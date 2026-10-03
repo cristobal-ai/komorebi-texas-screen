@@ -40,7 +40,7 @@ def is_verified(x: pd.DataFrame) -> pd.Series:
 
 
 def apply(x: pd.DataFrame, initials: str, today: str, accept_high=False, accept=(), sets=(), no_resource=(),
-          note=None, undo=(), accept_medium=False) -> pd.DataFrame:
+          note=None, undo=(), accept_medium=False, set_nodes=()) -> pd.DataFrame:
     x = x.copy()
     pid = x["eia_plant_id"].astype(str)
     stamp = {"verified_by": initials, "verified_on": today}
@@ -76,6 +76,12 @@ def apply(x: pd.DataFrame, initials: str, today: str, accept_high=False, accept=
              "match_method": "manual", "match_confidence": "none", "notes": note or "no ERCOT resource", **stamp}
         new_rows.append(b)
         x, pid = x[pid != i], pid[pid != i]
+    for spec in set_nodes:
+        res, node = (v.strip() for v in spec.split("=", 1))
+        m = x["ercot_resource_name"] == res
+        if not m.any():
+            raise SystemExit(f"resource {res} is not in the crosswalk")
+        x.loc[m, "ercot_settlement_point"] = node
     for i in undo:
         x.loc[pid == i, ["verified_by", "verified_on"]] = None
     if new_rows:
@@ -114,19 +120,21 @@ def main(argv=None):
     ap.add_argument("--accept")
     ap.add_argument("--set", action="append", default=[])
     ap.add_argument("--no-resource")
+    ap.add_argument("--set-node", action="append", default=[], metavar="RESOURCE=NODE",
+                    help="set the settlement point of an ERCOT resource (find names with ercot_history --find)")
     ap.add_argument("--note")
     ap.add_argument("--undo")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args(argv)
     x = load()
-    changing = a.accept_high or a.accept_medium or a.accept or a.set or a.no_resource or a.undo
+    changing = a.accept_high or a.accept_medium or a.accept or a.set or a.no_resource or a.undo or a.set_node
     if changing:
         if not a.initials:
             raise SystemExit("--initials is required when recording decisions")
         before = set(x.loc[is_verified(x), "eia_plant_id"].astype(str))
         x = apply(x, a.initials.strip().upper(), dt.date.today().isoformat(), a.accept_high, _ids(a.accept),
-                  a.set, _ids(a.no_resource), a.note, _ids(a.undo), accept_medium=a.accept_medium)
+                  a.set, _ids(a.no_resource), a.note, _ids(a.undo), accept_medium=a.accept_medium, set_nodes=a.set_node)
         x.to_csv(CROSSWALK_CSV, index=False)
         print(f"saved {CROSSWALK_CSV}")
         newly = x[is_verified(x) & ~x["eia_plant_id"].astype(str).isin(before)]

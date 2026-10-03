@@ -59,13 +59,14 @@ def fetch_sced_day(api, day: dt.date, cfg: dict) -> pd.DataFrame:
     return metrics.sced_to_15min(gen, cfg)
 
 
-def fetch_spp_day(api, day: dt.date, keep: set[str]) -> pd.DataFrame:
+def fetch_spp_day(api, day: dt.date, keep: set[str] | None) -> pd.DataFrame:
+    """keep=None returns every settlement point (used by find())."""
     df = api.get_spp_real_time_15_min(date=pd.Timestamp(day, tz=metrics.TZ), end=pd.Timestamp(day, tz=metrics.TZ) + pd.Timedelta(days=1))
     loc = find_col(df, "Location", required=True)
     price = find_col(df, "SPP", "Settlement Point Price", required=True)
     start = find_col(df, "Interval Start", required=True)
     zones = df[loc].astype(str).str.startswith(("HB_", "LZ_"))
-    d = df[zones | df[loc].isin(keep)]
+    d = df if keep is None else df[zones | df[loc].isin(keep)]
     out = pd.DataFrame({
         "interval_start": pd.to_datetime(d[start], utc=True),
         "location": d[loc].astype(str).str.strip(),
@@ -146,3 +147,39 @@ def load_cached(start: dt.date, end: dt.date) -> tuple[pd.DataFrame, pd.DataFram
 
     base = raw_dir("ercot")
     return read(base / "sced_15min"), read(base / "spp_15min")
+
+
+def find(patterns: list[str], day: dt.date) -> None:
+    """Print SCED resources (with Resource Type) and SPP settlement points whose name contains any pattern.
+
+    For crosswalk gaps: a unit missing from the PVGR list (is it registered under another type?) and a resource
+    node for a unit the Resource Node ↔ Unit mapping does not know. Fetches one day, ~30 s.
+    """
+    api = _api()
+    pats = [p.upper() for p in patterns]
+    gen = api.get_60_day_sced_disclosure(date=pd.Timestamp(day), process=False)["sced_gen_resource"]
+    name, rtype = find_col(gen, "Resource Name", required=True), find_col(gen, "Resource Type", required=True)
+    hsl = find_col(gen, "HSL", required=True)
+    gen = gen.assign(_hsl=pd.to_numeric(gen[hsl], errors="coerce"))
+    hit = gen[gen[name].astype(str).str.upper().map(lambda v: any(p in v for p in pats))]
+    print(f"\nSCED resources matching {patterns} on {day}:")
+    print(hit.groupby([name, rtype])["_hsl"].agg(["max", "size"]).rename(columns={"max": "max_hsl_mw", "size": "runs"}).to_string()
+          if len(hit) else "  none (all resource types searched)")
+    spp = fetch_spp_day(api, day, None)
+    locs = sorted({v for v in spp["location"] if any(p in v.upper() for p in pats)})
+    print(f"\nSPP settlement points matching {patterns}:")
+    print("\n".join(f"  {v}" for v in locs) if locs else "  none")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    logging.basicConfig(level=logging.WARNING)
+    from pipeline.common import load_env
+
+    load_env()
+    ap = argparse.ArgumentParser(description="look up ERCOT resource / settlement-point names")
+    ap.add_argument("--find", nargs="+", required=True, metavar="TEXT")
+    ap.add_argument("--day", type=dt.date.fromisoformat, default=dt.date(2026, 7, 15))
+    a = ap.parse_args()
+    find(a.find, a.day)
