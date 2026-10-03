@@ -65,14 +65,16 @@ def report(summary: pd.DataFrame, plants: pd.DataFrame | None, cfg: dict, window
         v = ok[col].dropna()
         stats = [v.min(), v.quantile(.25), v.median(), v.quantile(.75), v.max()] if len(v) else [np.nan] * 5
         lines.append(f"| {col} | {len(v)} | " + " | ".join(fmt(x) for x in stats) + " |")
-    qc, qu = quartiles(ok["capture_rate"]), quartiles(ok["curtailment_pct"])
+    qc, qp, qu = (quartiles(ok["capture_rate"]), quartiles(ok["capture_rate_potential"]),
+                  quartiles(ok["curtailment_pct"]))
     lines += [
         "", "## Breakpoints", "",
         f"- Fixed capture-rate bands (config): {fixed['capture_rate']['fixed']}",
         f"- Fixed curtailment bands (config): {fixed['curtailment_pct']['fixed']}",
         f"- Fleet quartiles — capture_rate: {', '.join(f'{k} {num(v, 3)}' for k, v in qc.items()) or '—'}",
+        f"- Fleet quartiles — capture_rate_potential (the scored metric): {', '.join(f'{k} {num(v, 3)}' for k, v in qp.items()) or '—'}",
         f"- Fleet quartiles — curtailment_pct: {', '.join(f'{k} {pct(v)}' for k, v in qu.items()) or '—'}",
-        "- Switch `scoring.breakpoint_mode` to `quantile` once these look sane (plan §3 change 5).", "",
+        "- `scoring.breakpoint_mode` is `quantile`: these quartiles (capture_rate_potential, curtailment_pct) are the cut points.", "",
         "## Plants", "",
         "| EIA ID | Plant | County | Tier | MW | Months | Capture | Shape | Basis | Curtail | SCED CF | Potential CF | Peak HSL/MW | Peak last 3 mo | Pot. capture | EIA-923 CF | Status |",
         "|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",

@@ -106,14 +106,20 @@ sb6:
 
 scoring:
   max_total: 100
-  breakpoint_mode: fixed       # fixed | quantile  (switch to quantile after Phase 3b has run)
+  # quantile (decision 3 Oct 2026, plan §3 change 5): cut points are the fleet quartiles of the metric over plants with
+  # metrics_status = ok, computed at scoring time from plant_metrics. Fleet at the first 30-month run: capture_rate_potential
+  # q25/q50/q75 = 0.61/0.65/0.69 (range 0.33-0.84), curtailment_pct 4.6%/7.7%/15.0% (max 28.8%). The fixed bands would
+  # leave < 25% of plants in the 12-point bucket and < 25% in the 0-point bucket, so they discriminate less.
+  breakpoint_mode: quantile    # fixed | quantile
 
   A_acquisition_discount:      # 30 pts — lower performance scores higher
     capture_rate:              # points by capture-rate band (fraction of hub average)
+      metric: capture_rate_potential   # HSL-weighted: delivered-generation capture is flattered by curtailment
       max: 12
       fixed: [{lt: 0.55, pts: 12}, {lt: 0.65, pts: 8}, {lt: 0.75, pts: 4}, {else: 0}]
       quantile: {q25: 12, q50: 8, q75: 4, else: 0}
     curtailment_pct:
+      metric: curtailment_pct
       max: 8
       fixed: [{gt: 0.20, pts: 8}, {gt: 0.10, pts: 5}, {else: 2}]
       quantile: {q75: 8, q50: 5, else: 2}

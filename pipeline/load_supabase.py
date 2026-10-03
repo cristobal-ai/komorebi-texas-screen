@@ -175,3 +175,8 @@ def run() -> int:
     if metrics is None:
         log.info("no plant_metrics.parquet — loading the plant master without phase 3b columns")
     return load(gpd.read_parquet(DATA_DIR / "plants.parquet"), url, key, metrics=metrics, monthly=monthly)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    run()
