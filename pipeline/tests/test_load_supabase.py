@@ -125,3 +125,29 @@ def test_monthly_rows_json_safe_and_filtered():
     rows = ls.monthly_rows(mo, {1}, "r1")
     assert len(rows) == 1 and rows[0]["capture_rate"] is None and rows[0]["n_units"] == 2 and rows[0]["gen_mwh"] == 1.0
     json.dumps(rows)
+
+
+def test_send_retries_connection_resets_and_5xx(monkeypatch):
+    import requests
+
+    monkeypatch.setattr(ls.time, "sleep", lambda s: None)
+    calls = []
+
+    class Flaky:
+        def post(self, url, **kw):
+            calls.append(url)
+            if len(calls) == 1:
+                raise requests.exceptions.ConnectionError("reset")
+            if len(calls) == 2:
+                return FakeResp(ok=False, status=503)
+            return FakeResp()
+
+    r = ls._send(Flaky(), "post", "https://x/rest/v1/plants", json=[], timeout=1, headers={})
+    assert r.ok and len(calls) == 3
+
+    class Dead:
+        def post(self, url, **kw):
+            raise requests.exceptions.ConnectionError("down")
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        ls._send(Dead(), "post", "https://x/rest/v1/plants", retries=2, json=[], timeout=1, headers={})

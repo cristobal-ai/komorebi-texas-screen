@@ -12,6 +12,7 @@ import datetime as dt
 import logging
 import math
 import os
+import time
 
 import geopandas as gpd
 import numpy as np
@@ -57,6 +58,26 @@ MONTHLY_COLUMNS = [
 ]
 INT_COLUMNS = {"eia_id", "n_generators", "year_uspvdb", "n_polygons", "eia860_year", "cf_year", "months_reported",
                "metrics_window_months", "n_units", "days"}
+
+
+def _send(session, method: str, url: str, retries: int = 4, **kw):
+    """session.<method>(url, **kw), retried with 2/4/8/16 s backoff on connection resets, timeouts, 429 and 5xx.
+    Every write here is an upsert or a delete keyed on run_id, so repeating a request is safe."""
+    for attempt in range(retries + 1):
+        try:
+            r = getattr(session, method)(url, **kw)
+            if r.status_code not in (429, 500, 502, 503, 504) or attempt == retries:
+                return r
+            why = f"HTTP {r.status_code}"
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            if attempt == retries:
+                raise
+            why = type(e).__name__
+        wait = 2 ** (attempt + 1)
+        log.warning("Supabase %s %s failed (%s); retry %d/%d in %ds", method.upper(), url.split("?")[0].rsplit("/", 1)[-1],
+                    why, attempt + 1, retries, wait)
+        time.sleep(wait)
+    raise RuntimeError("unreachable")
 
 
 def headers(key: str) -> dict:
@@ -118,14 +139,14 @@ def load_monthly(monthly: pd.DataFrame, eia_ids: set[int], url: str, key: str, r
     base = f"{url.rstrip('/')}/rest/v1/{MONTHLY_TABLE}"
     h = headers(key) | {"Content-Type": "application/json"}
     for i in range(0, len(rows), 500):
-        r = session.post(f"{base}?on_conflict=eia_id,month", json=rows[i:i + 500], timeout=60,
+        r = _send(session, "post", f"{base}?on_conflict=eia_id,month", json=rows[i:i + 500], timeout=60,
                          headers=h | {"Prefer": "resolution=merge-duplicates,return=minimal"})
         if not r.ok:
             raise RuntimeError(f"monthly upsert batch {i // 500} failed: HTTP {r.status_code} {r.text[:500]}")
-    r = session.delete(f"{base}?run_id=neq.{run_id}", headers=h | {"Prefer": "return=minimal"}, timeout=60)
+    r = _send(session, "delete", f"{base}?run_id=neq.{run_id}", headers=h | {"Prefer": "return=minimal"}, timeout=60)
     if not r.ok:
         raise RuntimeError(f"monthly stale-row delete failed: HTTP {r.status_code} {r.text[:500]}")
-    r = session.get(f"{base}?select=eia_id&run_id=eq.{run_id}", timeout=60,
+    r = _send(session, "get", f"{base}?select=eia_id&run_id=eq.{run_id}", timeout=60,
                     headers=h | {"Prefer": "count=exact", "Range": "0-0"})
     if not r.ok:
         raise RuntimeError(f"monthly count check failed: HTTP {r.status_code} {r.text[:500]}")
@@ -143,14 +164,14 @@ def load(plants: gpd.GeoDataFrame, url: str, key: str, run_id: str | None = None
     base = f"{url.rstrip('/')}/rest/v1/{TABLE}"
     h = headers(key) | {"Content-Type": "application/json"}
     for i in range(0, len(rows), BATCH):
-        r = session.post(f"{base}?on_conflict=eia_id", json=rows[i:i + BATCH], timeout=60,
+        r = _send(session, "post", f"{base}?on_conflict=eia_id", json=rows[i:i + BATCH], timeout=60,
                          headers=h | {"Prefer": "resolution=merge-duplicates,return=minimal"})
         if not r.ok:
             raise RuntimeError(f"upsert batch {i // BATCH} failed: HTTP {r.status_code} {r.text[:500]}")
-    r = session.delete(f"{base}?run_id=neq.{run_id}", headers=h | {"Prefer": "return=minimal"}, timeout=60)
+    r = _send(session, "delete", f"{base}?run_id=neq.{run_id}", headers=h | {"Prefer": "return=minimal"}, timeout=60)
     if not r.ok:
         raise RuntimeError(f"stale-row delete failed: HTTP {r.status_code} {r.text[:500]}")
-    r = session.get(f"{base}?select=eia_id&run_id=eq.{run_id}", timeout=60,
+    r = _send(session, "get", f"{base}?select=eia_id&run_id=eq.{run_id}", timeout=60,
                     headers=h | {"Prefer": "count=exact", "Range": "0-0"})
     if not r.ok:
         raise RuntimeError(f"count check failed: HTTP {r.status_code} {r.text[:500]}")
