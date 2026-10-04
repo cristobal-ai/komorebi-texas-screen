@@ -49,6 +49,18 @@ def norm_owner(name, stop: set[str]) -> str:
 
 
 # ---- reading ----------------------------------------------------------------------------------------------------------
+def _gdb_roots(names: list[str]) -> list[str]:
+    """File-geodatabase folders inside a zip, at any depth: 'a/b/x.gdb/file' → 'a/b/x.gdb'."""
+    roots = set()
+    for n in names:
+        parts = n.split("/")
+        for i, part in enumerate(parts[:-1] if not n.endswith("/") else parts):
+            if part.lower().endswith(".gdb"):
+                roots.add("/".join(parts[: i + 1]))
+                break
+    return sorted(roots)
+
+
 def discover_sources(folder: Path) -> list[tuple[str, str | None]]:
     """(gdal path, layer) for every vector dataset in the folder: loose shapefiles/GeoPackages/GeoJSON/GeoParquet,
     File Geodatabases (*.gdb folders) and zips of any of those."""
@@ -78,7 +90,7 @@ def discover_sources(folder: Path) -> list[tuple[str, str | None]]:
         elif p.is_file() and p.suffix.lower() == ".zip":
             with zipfile.ZipFile(p) as z:
                 names = z.namelist()
-            gdbs = sorted({n.split("/")[0] for n in names if n.split("/")[0].lower().endswith(".gdb")})
+            gdbs = _gdb_roots(names)
             members = [n for n in names if n.lower().endswith(VECTOR_SUFFIXES) and ".gdb/" not in n.lower()]
             for gdb in gdbs:
                 add_dataset(f"/vsizip/{p}/{gdb}")
@@ -95,40 +107,71 @@ def _pick(fields: list[str], candidates: list[str]) -> str | None:
     return None
 
 
-def read_neighborhood(sources: list[tuple[str, str | None]], bbox_5070: tuple[float, float, float, float],
-                      cfg: dict) -> gpd.GeoDataFrame:
-    """Parcels of every source that intersect the box (EPSG:5070), columns renamed to owner / prop_id / land_use /
-    market_value / land_value / county / year (missing ones are None), in EPSG:5070. Empty frame if no source covers it."""
+def _read_source(path: str, layer: str | None, cfg: dict, bbox_5070=None, mask_5070=None) -> gpd.GeoDataFrame | None:
+    """One source filtered by a bounding box or a (multi)polygon mask given in EPSG:5070; columns renamed to owner / prop_id /
+    land_use / market_value / land_value / county / year (missing ones None), result in EPSG:5070. None if the source does not
+    cover the area."""
     import pyogrio
 
     fmap = cfg["layers"]["parcels"]["fields"]
-    frames = []
+    info = pyogrio.read_info(path, layer=layer)
+    crs = info.get("crs")
+    if not crs:
+        return None
+    area = box(*bbox_5070) if bbox_5070 is not None else mask_5070
+    src_geom = gpd.GeoSeries([area], crs="EPSG:5070").to_crs(crs).iloc[0]
+    sb, tb = src_geom.bounds, info["total_bounds"]
+    if tb is None or sb[2] < tb[0] or sb[0] > tb[2] or sb[3] < tb[1] or sb[1] > tb[3]:
+        return None
+    fields = [str(f) for f in info["fields"]]
+    cols = {attr: _pick(fields, cands) for attr, cands in fmap.items()}
+    if cols["owner"] is None:
+        log.warning("%s: no owner column; fields are %s", Path(path).name, fields)
+    use = sorted({c for c in cols.values() if c})
+    kw = {"bbox": tuple(sb)} if bbox_5070 is not None else {"mask": src_geom}
+    df = pyogrio.read_dataframe(path, layer=layer, columns=use, **kw)
+    if df.empty:
+        return None
+    df = df.to_crs("EPSG:5070")
+    out = gpd.GeoDataFrame({a: (df[c].to_numpy() if c else None) for a, c in cols.items()},
+                           geometry=df.geometry.to_numpy(), crs="EPSG:5070")
+    out["source_file"] = Path(path.split("/vsizip/")[-1]).name
+    return out
+
+
+def _combine(frames: list, cfg: dict) -> gpd.GeoDataFrame:
+    frames = [f for f in frames if f is not None]
+    if not frames:
+        fmap = cfg["layers"]["parcels"]["fields"]
+        return gpd.GeoDataFrame({a: [] for a in [*fmap, "source_file"]}, geometry=[], crs="EPSG:5070")
+    return pd.concat(frames, ignore_index=True)
+
+
+def read_neighborhood(sources, bbox_5070, cfg: dict) -> gpd.GeoDataFrame:
+    """Parcels of every source intersecting one box (EPSG:5070). Empty frame if no source covers it."""
+    return _combine([_read_source(p, l, cfg, bbox_5070=bbox_5070) for p, l in sources], cfg)
+
+
+def read_mask(sources, mask_5070, cfg: dict) -> gpd.GeoDataFrame:
+    """Parcels of every source intersecting a (multi)polygon, in ONE pass per source: for a statewide file this replaces one
+    full scan per plant."""
+    return _combine([_read_source(p, l, cfg, mask_5070=mask_5070) for p, l in sources], cfg)
+
+
+def inspect(sources) -> str:
+    """What is in the parcel files: layer, CRS, feature count, bounds and fields (no features are read)."""
+    import pyogrio
+
+    lines = []
     for path, layer in sources:
         info = pyogrio.read_info(path, layer=layer)
         crs = info.get("crs")
-        if not crs:
-            continue
-        src_box = gpd.GeoSeries([box(*bbox_5070)], crs="EPSG:5070").to_crs(crs).total_bounds
-        tb = info["total_bounds"]
-        if tb is None or src_box[2] < tb[0] or src_box[0] > tb[2] or src_box[3] < tb[1] or src_box[1] > tb[3]:
-            continue
-        fields = [str(f) for f in info["fields"]]
-        cols = {attr: _pick(fields, cands) for attr, cands in fmap.items()}
-        missing = [a for a, c in cols.items() if c is None and a in ("owner",)]
-        if missing:
-            log.warning("%s: no column for %s; fields are %s", Path(path).name, missing, fields)
-        use = sorted({c for c in cols.values() if c})
-        df = pyogrio.read_dataframe(path, layer=layer, bbox=tuple(src_box), columns=use)
-        if df.empty:
-            continue
-        df = df.to_crs("EPSG:5070")
-        out = gpd.GeoDataFrame({a: (df[c].to_numpy() if c else None) for a, c in cols.items()},
-                               geometry=df.geometry.to_numpy(), crs="EPSG:5070")
-        out["source_file"] = Path(path.split("/vsizip/")[-1]).name
-        frames.append(out)
-    if not frames:
-        return gpd.GeoDataFrame({a: [] for a in [*fmap, "source_file"]}, geometry=[], crs="EPSG:5070")
-    return pd.concat(frames, ignore_index=True)
+        lines += [f"{Path(path.split('/vsizip/')[-1]).name}  layer={layer}", f"  features: {info.get('features')}  crs: {crs}  "
+                  f"geometry: {info.get('geometry_type')}", f"  bounds: {info.get('total_bounds')}",
+                  f"  fields: {[str(f) for f in info['fields']]}"]
+        if path.startswith("/vsizip/") and Path(path.split('/vsizip/')[-1].split(".zip")[0] + ".zip").exists():
+            lines.append("  note: read straight from a zip; extract it first for much faster reads on large files")
+    return "\n".join(lines) if lines else "no parcel datasets found"
 
 
 # ---- analysis ---------------------------------------------------------------------------------------------------------
@@ -221,36 +264,50 @@ def run() -> Path:
     cache = raw_dir(NAME) / "selected"
     cache.mkdir(exist_ok=True)
     folder.mkdir(exist_ok=True)
-    sources = None
     P = plants.to_crs("EPSG:5070")
-    rows = []
+    arrays = {}
     for (_, pl), geom in zip(plants.iterrows(), P.geometry):
+        arrays[int(pl["eia_id"])] = geom.buffer(c["point_buffer_m"]) if bool(pl["geometry_is_point"]) else geom
+
+    need = [pid for pid in arrays if not (cache / f"{pid}.parquet").exists()]
+    if need:
+        sources = discover_sources(folder)
+        log.info("parcel sources in %s: %d dataset(s); %d plant(s) need a parcel read", folder, len(sources), len(need))
+        if sources:
+            mask = unary_union([box(*arrays[pid].buffer(c["neighborhood_m"]).bounds) for pid in need])
+            log.info("reading parcels around %d plants in one pass per source (statewide files take several minutes)", len(need))
+            allp = read_mask(sources, mask, cfg)
+            log.info("read %d parcels", len(allp))
+            if not allp.empty:
+                tree = allp.sindex
+                for pid in need:
+                    area = arrays[pid].buffer(c["neighborhood_m"])
+                    sel = allp.iloc[np.sort(tree.query(area, predicate="intersects"))]
+                    if not sel.empty:                   # never cache 'no coverage': the county file may be added later
+                        sel.to_parquet(cache / f"{pid}.parquet")
+
+    rows = []
+    for (_, pl) in plants.iterrows():
         pid = int(pl["eia_id"])
-        is_point = bool(pl["geometry_is_point"])
-        array_geom = geom.buffer(c["point_buffer_m"]) if is_point else geom
         cp = cache / f"{pid}.parquet"
-        if cp.exists():
-            parcels = gpd.read_parquet(cp)
-        else:
-            if sources is None:
-                sources = discover_sources(folder)
-                log.info("parcel sources in %s: %d dataset(s)", folder, len(sources))
-            if not sources:
-                parcels = None
-            else:
-                bb = array_geom.buffer(c["neighborhood_m"]).bounds
-                parcels = read_neighborhood(sources, bb, cfg)
-                if not parcels.empty:                 # never cache 'no coverage': the county file may be added later
-                    parcels.to_parquet(cp)
-        r = analyze(array_geom, parcels, cfg, float(pl["ac_mw"]), is_point)
+        parcels = gpd.read_parquet(cp) if cp.exists() else None
+        r = analyze(arrays[pid], parcels, cfg, float(pl["ac_mw"]), bool(pl["geometry_is_point"]))
         r["eia_id"] = pid
         rows.append(r)
     df = pd.DataFrame(rows)
-    cols = ["eia_id"] + [x for x in df.columns if x != "eia_id"]
-    df = df[cols]
-    counts = df["parcel_status"].value_counts().to_dict()
-    log.info("parcels: %s", counts)
+    df = df[["eia_id"] + [x for x in df.columns if x != "eia_id"]]
+    log.info("parcels: %s", df["parcel_status"].value_counts().to_dict())
     if (df["parcel_status"] == "no_parcel_data").any():
         miss = plants.loc[plants["eia_id"].isin(df.loc[df["parcel_status"] == "no_parcel_data", "eia_id"]), "county"]
         log.warning("no parcel file covers %d plants; counties to download: %s", len(miss), sorted(set(miss.dropna())))
     return g.write_layer(NAME, df)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    ap = argparse.ArgumentParser(description="parcel files: --inspect lists layers, CRS, fields")
+    ap.add_argument("--inspect", action="store_true", required=True)
+    ap.parse_args()
+    print(inspect(discover_sources(raw_dir(NAME) / "manual")))

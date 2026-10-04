@@ -172,3 +172,28 @@ def test_run_end_to_end_caches_covered_plants_and_never_caches_missing_coverage(
     written.clear()
     pc.run()
     assert written["parcels"].set_index("eia_id").loc[1, "parcel_status"] == "ok"
+
+
+def test_read_mask_returns_only_parcels_under_the_mask_in_one_pass(tmp_path, cfg):
+    pytest.importorskip("pyogrio")
+    folder = _write_source(tmp_path)
+    sources = pc.discover_sources(folder)
+    mask = box(-100, -100, 100, 100)                                      # touches only the first parcel
+    got = pc.read_mask(sources, mask, cfg)
+    assert list(got["owner"]) == ["ACME SOLAR LLC"] and got.crs.to_epsg() == 5070
+    both = pc.read_mask(sources, mask.union(box(3400, 3400, 3500, 3500)), cfg)    # a two-part mask returns both parcels
+    assert sorted(both["owner"]) == ["ACME SOLAR LLC", "OTHER"]
+    assert pc.read_mask(sources, box(900_000, 900_000, 901_000, 901_000), cfg).empty
+
+
+def test_inspect_lists_layer_crs_and_fields(tmp_path):
+    pytest.importorskip("pyogrio")
+    out = pc.inspect(pc.discover_sources(_write_source(tmp_path)))
+    assert "stratmap_48371.gpkg" in out and "OWNER_NAME" in out and "features: 2" in out
+
+
+def test_gdb_folders_are_found_inside_zips_at_any_depth():
+    names = ["stratmap26/lp.gdb/a00000001.gdbtable", "stratmap26/lp.gdb/a00000001.spx", "stratmap26/readme.txt",
+             "other.GDB/gdb", "plain/file.shp"]
+    assert pc._gdb_roots(names) == ["other.GDB", "stratmap26/lp.gdb"]
+    assert pc._gdb_roots(["x.shp", "y/z.dbf"]) == []
