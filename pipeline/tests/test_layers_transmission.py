@@ -253,3 +253,12 @@ def test_run_falls_back_to_overpass_when_the_extract_fails(plants, cfg, tmp_path
     out = t.run(session=FakeOverpass())
     assert (out["transmission_source"] == "osm (overpass)").all()
     assert out.set_index("eia_id").loc[1, "dist_345kv_sub_mi"] == pytest.approx(0.1 * 69.0, rel=0.05)
+
+
+def test_poi_check_is_not_run_for_distribution_class_poi(plants, cfg):
+    p = plants.copy()
+    p["grid_voltage_kv"] = [69.0, 24.9, 138.0]                    # 69 and 24.9 kV are below the 100 kV that is mapped
+    lines = _layer([("w1", None, 345, LineString([(-103.05, 31.0), (-103.05, 31.2)]))], "line")
+    out = t.compute(p, lines, _layer([], "sub"), cfg, "osm", "2026-10-04").set_index("eia_id")
+    assert pd.isna(out.loc[1, "poi_kv_seen"]) and pd.isna(out.loc[2, "poi_kv_seen"])
+    assert out.loc[3, "poi_kv_seen"] is False                     # 138 kV POI with no 138 kV line nearby is a real mismatch

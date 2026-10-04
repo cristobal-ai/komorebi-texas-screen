@@ -11,7 +11,8 @@ Output data/layers/transmission.parquet, one row per eia_id:
     dist_138kv_line_mi     nearest line >= 138 kV
     kv_classes_within_near voltage classes (kV, ';'-joined) of lines within near_miles
     max_kv_within_near     highest of those
-    poi_kv_seen            True/False/None: does a line at the plant's EIA POI voltage run within near_miles
+    poi_kv_seen            True/False/None: does a line at the plant's EIA POI voltage run within near_miles (None when the
+                           EIA POI is below min_kv, i.e. distribution class: lines under 100 kV are not mapped)
     transmission_search_mi  coverage radius: a missing distance means none within this many miles
     transmission_source, transmission_fetched, transmission_confidence
 """
@@ -291,8 +292,8 @@ def compute(plants: gpd.GeoDataFrame, lines: gpd.GeoDataFrame, subs: gpd.GeoData
 
     def poi_seen(pid, cls):
         poi = eia_kv.get(pid)
-        if poi is None or pd.isna(poi):
-            return None
+        if poi is None or pd.isna(poi) or poi < c["min_kv"]:
+            return None          # below the mapped range (distribution-class POI): the check cannot be run
         return bool(cls and any(abs(float(k) - poi) <= poi * c["class_tolerance"] for k in cls.split(";")))
 
     out["poi_kv_seen"] = [poi_seen(p, k) for p, k in zip(out["eia_id"], out["kv_classes_within_near"])]
