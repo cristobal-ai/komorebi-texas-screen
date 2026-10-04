@@ -228,3 +228,25 @@ def test_verify_set_node_sets_point_for_resource_rows():
     import pytest
     with pytest.raises(SystemExit):
         verify.apply(x, "CR", "2026-10-03", set_nodes=["NOPE=Z"])
+
+
+def test_candidate_table_lists_same_county_and_similar_names_with_sums():
+    import pandas as pd
+
+    from pipeline.phase_3_market import verify
+
+    units = pd.DataFrame({
+        "unit_code": ["JAY_UNIT1", "JAY_UNIT2", "OTHER_U1", "FAR_U1"],
+        "unit_name": ["FIGHTING JAYS SOLAR U1", "FIGHTING JAYS SOLAR U2", "SOMETHING ELSE", "UNRELATED"],
+        "county_n": ["fort bend", "fort bend", "fort bend", "pecos"],
+        "county": ["Fort Bend"] * 3 + ["Pecos"],
+        "mw": [67.0, 160.5, 50.0, 400.0], "year": [2022.0, 2026.0, 2020.0, 2019.0],
+    })
+    xw = pd.DataFrame({"eia_plant_name": ["Fighting Jays Solar Project"], "ercot_resource_name": ["JAY_UNIT2"]})
+    sced = pd.DataFrame({"resource_name": ["JAY_UNIT1", "JAY_UNIT2"], "max_hsl_mw": [66.0, 159.9]})
+    out = verify.candidate_table({"eia_id": "62945", "plant_name": "Fighting Jays Solar Project", "county": "Fort Bend",
+                                  "ac_mw": 227.5, "cod_first": "2022-06"}, units, xw, sced,
+                                 {"JAY_UNIT1": "JAY_RN_1"}, {"solar", "project"})
+    assert "JAY_UNIT1" in out and "JAY_UNIT2" in out and "FAR_U1" not in out
+    assert "current match" in out and "JAY_RN_1" in out and "66.0" in out
+    assert "227.5 MW (0.0%)  JAY_UNIT1+JAY_UNIT2" in out or "JAY_UNIT1+JAY_UNIT2" in out   # own unit counts as free

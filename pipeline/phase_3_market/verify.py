@@ -14,6 +14,9 @@
 --set ID=A+B    replace a plant's rows with these ERCOT resource names (manual match)
 --no-resource   record that these plants have no ERCOT resource (stops them being re-matched)
 --undo IDS      clear verification for these plants (next run re-matches them)
+--candidates IDS  for these EIA plant ids, list every CDR unit that could belong to them (same county, or a name that
+                 looks alike), with MW, in-service year, whether another plant already holds it, the SCED peak HSL and the
+                 resource node, plus the MW sum of each plausible set. Use it before --set.
 --report        regenerate data/validation/crosswalk_review.md from the CSV (no changes)
 """
 from __future__ import annotations
@@ -25,6 +28,78 @@ import pandas as pd
 
 from pipeline.common import DATA_DIR
 from pipeline.phase_3_market.crosswalk import CROSSWALK_CSV, CSV_COLUMNS
+
+
+def candidate_table(plant: dict, units: pd.DataFrame, xw: pd.DataFrame, sced: pd.DataFrame | None,
+                    nodes: dict[str, str], stop: set[str]) -> str:
+    """Text table of CDR units that could belong to one EIA plant (see --candidates)."""
+    from pipeline.phase_3_market.crosswalk import _score_units, norm_county
+
+    class P:  # _score_units only needs plant_name
+        plant_name = plant["plant_name"]
+
+    u = _score_units(P, units, stop)
+    same = u["county_n"] == norm_county(plant["county"])
+    u = u[same | (u["name_score"] >= 50)].copy()
+    held = xw[xw["ercot_resource_name"].notna()].groupby("ercot_resource_name")["eia_plant_name"].first().to_dict()
+    peak = {} if sced is None or sced.empty else dict(zip(sced["resource_name"].astype(str), sced["max_hsl_mw"]))
+    u["held_by"] = u["unit_code"].map(held)
+    u["sced_peak_mw"] = u["unit_code"].map(peak)
+    u["node"] = u["unit_code"].map(lambda c: nodes.get(str(c).upper()))
+    u["county_match"] = same[u.index]
+    u = u.sort_values(["name_score", "county_match", "mw"], ascending=[False, False, False])
+    lines = [f"\n== {plant['eia_id']} {plant['plant_name']}  ({plant['county']} County, {plant['ac_mw']:.1f} MW AC, "
+             f"COD {plant.get('cod_first')}) =="]
+    if u.empty:
+        lines.append("  no CDR unit in the county and none with a similar name")
+        return "\n".join(lines)
+    lines.append(f"  {'unit_code':<22}{'cdr name':<34}{'county':<12}{'MW':>7}{'year':>6}{'name':>6}  {'peak HSL':>8}  held by / node")
+    for r in u.itertuples():
+        mw = "" if pd.isna(r.mw) else f"{r.mw:.1f}"
+        yr = "" if pd.isna(r.year) else f"{int(r.year)}"
+        pk = "" if pd.isna(r.sced_peak_mw) else f"{r.sced_peak_mw:.1f}"
+        mine = isinstance(r.held_by, str) and r.held_by == plant["plant_name"]
+        tag = ("current match" + (f" · {r.node}" if r.node else "")) if mine else (
+            f"HELD: {r.held_by}" if isinstance(r.held_by, str) else (r.node or ""))
+        lines.append(f"  {str(r.unit_code):<22}{str(r.unit_name)[:32]:<34}{str(r.county)[:11]:<12}{mw:>7}{yr:>6}"
+                     f"{int(r.name_score):>6}  {pk:>8}  {tag}")
+    free = u[u["held_by"].map(lambda v: not isinstance(v, str) or v == plant["plant_name"]) & u["mw"].notna()]
+    from itertools import combinations
+    best = []
+    for k in range(1, min(5, len(free)) + 1):
+        for combo in combinations(free.index, k):
+            tot = free.loc[list(combo), "mw"].sum()
+            err = abs(tot - plant["ac_mw"]) / plant["ac_mw"]
+            if err <= 0.15:
+                best.append((err, tot, [free.loc[i, "unit_code"] for i in combo]))
+    best.sort(key=lambda t: (t[0], len(t[2])))
+    lines.append("  free-unit sets within 15% of the plant's MW:")
+    lines += [f"    {tot:7.1f} MW ({err:.1%})  {'+'.join(codes)}" for err, tot, codes in best[:6]] or ["    none"]
+    return "\n".join(lines)
+
+
+def candidates_report(ids: set[str]) -> str:
+    from pipeline.common import load_config, raw_dir
+    from pipeline.phase_3_market.crosswalk import cdr_units, settlement_points
+
+    plants = pd.read_parquet(DATA_DIR / "plants.parquet")
+    cdr = cdr_units(pd.read_parquet(raw_dir("ercot_cdr") / "cdr_units.parquet"))
+    sp, mp = raw_dir("ercot") / "sced_pv_resources.parquet", raw_dir("ercot") / "resource_node_to_unit.parquet"
+    sced = pd.read_parquet(sp) if sp.exists() else None
+    nodes = settlement_points(pd.read_parquet(mp)) if mp.exists() else {}
+    stop = set(load_config()["crosswalk"]["stopwords"])
+    xw = load()
+    out = []
+    for i in sorted(ids):
+        row = plants[plants["eia_id"].astype(str) == i]
+        if row.empty:
+            out.append(f"\nEIA plant {i} is not in data/plants.parquet")
+            continue
+        r = row.iloc[0]
+        out.append(candidate_table({"eia_id": i, "plant_name": r["plant_name"], "county": r["county"],
+                                    "ac_mw": float(r["ac_mw"]), "cod_first": str(r.get("cod_first"))[:7]},
+                                   cdr, xw, sced, nodes, stop))
+    return "\n".join(out)
 
 
 def _ids(s: str | None) -> set[str]:
@@ -122,11 +197,15 @@ def main(argv=None):
     ap.add_argument("--no-resource")
     ap.add_argument("--set-node", action="append", default=[], metavar="RESOURCE=NODE",
                     help="set the settlement point of an ERCOT resource (find names with ercot_history --find)")
+    ap.add_argument("--candidates", help="EIA plant ids: list possible CDR units (see module docstring)")
     ap.add_argument("--note")
     ap.add_argument("--undo")
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args(argv)
+    if a.candidates:
+        print(candidates_report(_ids(a.candidates)))
+        return
     x = load()
     changing = a.accept_high or a.accept_medium or a.accept or a.set or a.no_resource or a.undo or a.set_node
     if changing:
