@@ -1,6 +1,6 @@
 """Layer 1: transmission. Distance from each plant to 345 kV substations and lines, and what voltage classes run nearby.
 
-Source: OpenStreetMap (`power=line`, `power=substation`, voltage >= 100 kV) via Overpass, queried in boxes around the plants; or a HIFLD line file
+Source: OpenStreetMap (`power=line`, `power=substation`, voltage >= 100 kV): the Geofabrik Texas extract (parsed with pyosmium), or Overpass boxes around the plants as a fallback; or a HIFLD line file
 dropped in data/raw/transmission/manual/ (columns VOLTAGE kV or VOLT_CLASS). Both are partial in places, so every row
 carries `transmission_source`; the distance is a screen, not an interconnection study.
 
@@ -28,9 +28,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import requests
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, Polygon
 
-from pipeline.common import load_config, manual_file, raw_dir
+from pipeline.common import download, load_config, manual_file, raw_dir
 from pipeline.phase_4_geo import common as g
 
 log = logging.getLogger(__name__)
@@ -178,6 +178,81 @@ def fetch_osm(plants: gpd.GeoDataFrame, cfg: dict, session=requests,
     return merge(frames_l), merge(frames_s), stamp
 
 
+# ---- Geofabrik PBF (preferred) ----------------------------------------------------------------------------------------
+def read_pbf(path: Path, min_kv: float) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """One pass over an OSM extract: power=line ways and power=substation nodes/ways with voltage >= min_kv.
+
+    Substation ways (areas) are reduced to their centroid; multipolygon substation relations are skipped (a few per
+    thousand). Needs the `osmium` package (pyosmium)."""
+    import osmium
+
+    class Handler(osmium.SimpleHandler):
+        def __init__(self):
+            super().__init__()
+            self.lines: list[dict] = []
+            self.subs: list[dict] = []
+
+        def _rec(self, kind, el_id, tags, geom, kv):
+            return {"osm_id": f"{kind}{el_id}", "name": tags.get("name"), "operator": tags.get("operator"),
+                    "voltage_kv": kv, "geometry": geom}
+
+        def node(self, n):
+            if n.tags.get("power") != "substation":
+                return
+            kv = parse_kv(n.tags.get("voltage"))
+            if np.isnan(kv) or kv < min_kv or not n.location.valid():
+                return
+            self.subs.append(self._rec("n", n.id, n.tags, Point(n.location.lon, n.location.lat), kv))
+
+        def way(self, w):
+            kind = w.tags.get("power")
+            if kind not in ("line", "substation"):
+                return
+            kv = parse_kv(w.tags.get("voltage"))
+            if np.isnan(kv) or kv < min_kv:
+                return
+            try:
+                pts = [(nd.lon, nd.lat) for nd in w.nodes if nd.location.valid()]
+            except osmium.InvalidLocationError:
+                return
+            if kind == "line" and len(pts) >= 2:
+                self.lines.append(self._rec("w", w.id, w.tags, LineString(pts), kv))
+            elif kind == "substation" and pts:
+                geom = Polygon(pts).centroid if len(pts) >= 4 and pts[0] == pts[-1] else Point(np.mean(pts, axis=0))
+                self.subs.append(self._rec("w", w.id, w.tags, geom, kv))
+
+    h = Handler()
+    h.apply_file(str(path), locations=True)
+
+    def frame(rows):
+        cols = ["osm_id", "name", "operator", "voltage_kv"]
+        return gpd.GeoDataFrame(rows, geometry="geometry", crs="EPSG:4326") if rows else gpd.GeoDataFrame(
+            {c: [] for c in cols}, geometry=[], crs="EPSG:4326")
+
+    return frame(h.lines), frame(h.subs)
+
+
+def fetch_pbf(cfg: dict) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    """Download (once) and parse the Texas extract; the parsed lines/substations are cached as Parquet."""
+    c = cfg["layers"]["transmission"]
+    d = raw_dir(NAME)
+    lp, sp = d / "pbf_lines.parquet", d / "pbf_substations.parquet"
+    manual = manual_file(NAME, (".pbf",))
+    pbf = manual or (d / Path(c["pbf_url"]).name)
+    if lp.exists() and sp.exists():
+        log.info("cache hit %s", lp)
+        return gpd.read_parquet(lp), gpd.read_parquet(sp), dt.datetime.fromtimestamp(lp.stat().st_mtime).date().isoformat()
+    if not pbf.exists():
+        log.info("downloading %s (~700 MB, a few minutes)", c["pbf_url"])
+        download(c["pbf_url"], pbf, timeout=(30, 120))
+    log.info("reading %s for power lines and substations >= %s kV (1-3 minutes)", pbf.name, c["min_kv"])
+    lines, subs = read_pbf(pbf, c["min_kv"])
+    log.info("PBF: %d line segments, %d substations", len(lines), len(subs))
+    lines.to_parquet(lp)
+    subs.to_parquet(sp)
+    return lines, subs, dt.datetime.fromtimestamp(pbf.stat().st_mtime).date().isoformat()
+
+
 # ---- HIFLD override ---------------------------------------------------------------------------------------------------
 def read_hifld(path: Path) -> gpd.GeoDataFrame:
     src = f"/vsizip/{path}" if path.suffix.lower() == ".zip" else str(path)
@@ -235,8 +310,17 @@ def compute(plants: gpd.GeoDataFrame, lines: gpd.GeoDataFrame, subs: gpd.GeoData
 def run(session=requests) -> Path:
     cfg = load_config()
     plants = g.load_plants()
-    lines, subs, fetched = fetch_osm(plants, cfg, session)
+    lines = subs = fetched = None
     source = "osm"
+    if cfg["layers"]["transmission"]["use_pbf"]:
+        try:
+            lines, subs, fetched = fetch_pbf(cfg)
+            source = "osm (geofabrik extract)"
+        except Exception as e:                       # no osmium wheel, download blocked, corrupt file: use the API
+            log.warning("Geofabrik extract unavailable (%s: %s); falling back to Overpass boxes", type(e).__name__, e)
+    if lines is None:
+        lines, subs, fetched = fetch_osm(plants, cfg, session)
+        source = "osm (overpass)"
     manual = manual_file(NAME, (".zip", ".shp", ".geojson", ".json", ".gpkg"))
     if manual:
         log.info("using HIFLD lines from %s (substations stay OSM)", manual)
@@ -245,5 +329,5 @@ def run(session=requests) -> Path:
     df = compute(plants, lines, subs, cfg, source, fetched)
     n345 = int(df["dist_345kv_sub_mi"].notna().sum())
     log.info("transmission: %d plants; 345 kV substation found for %d; POI voltage seen nearby for %d of %d with an EIA POI",
-             len(df), n345, int(df["poi_kv_seen"].fillna(False).sum()), int(df["poi_kv_seen"].notna().sum()))
+             len(df), n345, int((df["poi_kv_seen"] == True).sum())  # noqa: E712, int(df["poi_kv_seen"].notna().sum()))
     return g.write_layer(NAME, df)

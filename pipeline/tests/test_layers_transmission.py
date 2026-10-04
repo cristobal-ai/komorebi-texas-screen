@@ -200,3 +200,51 @@ def test_report_table_joins_plant_names_and_filters_county(tmp_path, monkeypatch
     monkeypatch.setattr(rp, "DATA_DIR", tmp_path)
     out = rp.table("transmission", "pecos")
     assert list(out["plant_name"]) == ["P1"] and out.iloc[0]["dist_345kv_sub_mi"] == 3.0
+
+
+OSM_XML = """<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="test">
+  <node id="1" lat="31.00" lon="-103.00"/>
+  <node id="2" lat="31.10" lon="-103.00"/>
+  <node id="3" lat="31.20" lon="-103.00"/>
+  <node id="4" lat="31.00" lon="-103.10"/>
+  <node id="5" lat="31.01" lon="-103.10"/>
+  <node id="6" lat="31.01" lon="-103.09"/>
+  <node id="7" lat="31.00" lon="-103.09"/>
+  <node id="8" lat="31.50" lon="-103.50"><tag k="power" v="substation"/><tag k="voltage" v="345000;138000"/><tag k="name" v="Solstice"/></node>
+  <node id="9" lat="31.60" lon="-103.50"><tag k="power" v="substation"/><tag k="voltage" v="69000"/></node>
+  <way id="100"><nd ref="1"/><nd ref="2"/><nd ref="3"/><tag k="power" v="line"/><tag k="voltage" v="345000"/></way>
+  <way id="101"><nd ref="1"/><nd ref="2"/><tag k="power" v="line"/><tag k="voltage" v="69000"/></way>
+  <way id="102"><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="7"/><nd ref="4"/><tag k="power" v="substation"/><tag k="voltage" v="138000"/><tag k="name" v="Pad"/></way>
+  <way id="103"><nd ref="1"/><nd ref="3"/><tag k="highway" v="road"/></way>
+</osm>
+"""
+
+
+def test_read_pbf_extracts_high_voltage_lines_and_substations(tmp_path):
+    pytest.importorskip("osmium")
+    f = tmp_path / "mini.osm"
+    f.write_text(OSM_XML)
+    lines, subs = t.read_pbf(f, 100)
+    assert list(lines["osm_id"]) == ["w100"] and lines.iloc[0]["voltage_kv"] == 345         # 69 kV line and the road are dropped
+    assert lines.iloc[0].geometry.geom_type == "LineString" and len(lines.iloc[0].geometry.coords) == 3
+    by = subs.set_index("osm_id")
+    assert set(by.index) == {"n8", "w102"}                                                  # the 69 kV node is dropped
+    assert by.loc["n8", "name"] == "Solstice" and by.loc["n8", "voltage_kv"] == 345
+    assert by.loc["w102"].geometry.geom_type == "Point"                                     # area reduced to a centroid
+    assert by.loc["w102"].geometry.x == pytest.approx(-103.095, abs=0.01)
+
+
+def test_run_falls_back_to_overpass_when_the_extract_fails(plants, cfg, tmp_path, monkeypatch):
+    from pipeline.phase_4_geo import common as gc
+
+    monkeypatch.setattr(t, "raw_dir", lambda s: tmp_path / s)
+    (tmp_path / "transmission").mkdir()
+    monkeypatch.setattr(t, "fetch_pbf", lambda cfg: (_ for _ in ()).throw(RuntimeError("download blocked")))
+    monkeypatch.setattr(t.g, "load_plants", lambda: plants)
+    monkeypatch.setattr(t.g, "LAYERS_DIR", tmp_path / "layers")
+    monkeypatch.setattr(t.g, "write_layer", lambda name, df: df)
+    monkeypatch.setattr(t.time, "sleep", lambda s: None)
+    out = t.run(session=FakeOverpass())
+    assert (out["transmission_source"] == "osm (overpass)").all()
+    assert out.set_index("eia_id").loc[1, "dist_345kv_sub_mi"] == pytest.approx(0.1 * 69.0, rel=0.05)

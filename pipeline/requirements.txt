@@ -12,3 +12,4 @@ rapidfuzz>=3.9
 gridstatus>=0.30
 supabase>=2.6
 pytest>=8.2
+osmium>=4.0   # Phase 4 transmission layer: reads the OpenStreetMap Texas extract
