@@ -19,6 +19,7 @@ Parcel data is an annual snapshot from county appraisal districts: `parcel_vinta
 from __future__ import annotations
 
 import logging
+import time
 import re
 import zipfile
 from pathlib import Path
@@ -121,7 +122,11 @@ def _read_source(path: str, layer: str | None, cfg: dict, bbox_5070=None, mask_5
     area = box(*bbox_5070) if bbox_5070 is not None else mask_5070
     src_geom = gpd.GeoSeries([area], crs="EPSG:5070").to_crs(crs).iloc[0]
     sb, tb = src_geom.bounds, info["total_bounds"]
+    name = Path(path.split("/vsizip/")[-1]).name
+    log.info("%s: source crs %s bounds %s; request bounds %s", name, crs, None if tb is None else [round(float(x)) for x in tb],
+             [round(float(x)) for x in sb])
     if tb is None or sb[2] < tb[0] or sb[0] > tb[2] or sb[3] < tb[1] or sb[1] > tb[3]:
+        log.warning("%s: request lies outside the source bounds (wrong CRS in the plant geometry?)", name)
         return None
     fields = [str(f) for f in info["fields"]]
     cols = {attr: _pick(fields, cands) for attr, cands in fmap.items()}
@@ -129,7 +134,9 @@ def _read_source(path: str, layer: str | None, cfg: dict, bbox_5070=None, mask_5
         log.warning("%s: no owner column; fields are %s", Path(path).name, fields)
     use = sorted({c for c in cols.values() if c})
     kw = {"bbox": tuple(sb)} if bbox_5070 is not None else {"mask": src_geom}
+    t0 = time.time()
     df = pyogrio.read_dataframe(path, layer=layer, columns=use, **kw)
+    log.info("%s: %s read returned %d rows in %.1f s", name, "bbox" if bbox_5070 is not None else "mask", len(df), time.time() - t0)
     if df.empty:
         return None
     df = df.to_crs("EPSG:5070")
@@ -155,7 +162,13 @@ def read_neighborhood(sources, bbox_5070, cfg: dict) -> gpd.GeoDataFrame:
 def read_mask(sources, mask_5070, cfg: dict) -> gpd.GeoDataFrame:
     """Parcels of every source intersecting a (multi)polygon, in ONE pass per source: for a statewide file this replaces one
     full scan per plant."""
-    return _combine([_read_source(p, l, cfg, mask_5070=mask_5070) for p, l in sources], cfg)
+    out = _combine([_read_source(p, l, cfg, mask_5070=mask_5070) for p, l in sources], cfg)
+    if out.empty and hasattr(mask_5070, "geoms"):
+        log.warning("mask read returned nothing; retrying box by box (%d boxes)", len(mask_5070.geoms))
+        out = _combine([_read_source(p, l, cfg, bbox_5070=b.bounds)
+                        for b in mask_5070.geoms for p, l in sources], cfg)
+        out = out.drop_duplicates(subset=["prop_id", "owner"]) if not out.empty and out["prop_id"].notna().any() else out
+    return out
 
 
 def inspect(sources) -> str:
@@ -307,10 +320,26 @@ if __name__ == "__main__":
     import argparse
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    ap = argparse.ArgumentParser(description="parcel files: --inspect lists layers, CRS, fields")
-    ap.add_argument("--inspect", action="store_true", required=True)
-    ap.parse_args()
+    ap = argparse.ArgumentParser(description="parcel files: --inspect lists layers, CRS, fields; --probe EIA_ID reads one plant")
+    ap.add_argument("--inspect", action="store_true")
+    ap.add_argument("--probe", type=int, default=None, help="eia_id: read that plant's 3 km neighbourhood by box and by mask")
+    a = ap.parse_args()
     folder = raw_dir(NAME) / "manual"
+    if a.probe is not None:
+        cfg = load_config()
+        pl = g.load_plants()
+        pl = pl[pl["eia_id"] == a.probe].to_crs("EPSG:5070")
+        if pl.empty:
+            raise SystemExit(f"eia_id {a.probe} not in plants.parquet")
+        print("plant geometry bounds (EPSG:5070):", [round(x) for x in pl.geometry.iloc[0].bounds])
+        area = box(*pl.geometry.iloc[0].buffer(cfg["layers"]["parcels"]["neighborhood_m"]).bounds)
+        srcs = discover_sources(folder)
+        print("sources:", len(srcs))
+        print("box rows :", len(read_neighborhood(srcs, area.bounds, cfg)))
+        print("mask rows:", len(read_mask(srcs, area, cfg)))
+        raise SystemExit(0)
+    if not a.inspect:
+        ap.error("give --inspect or --probe EIA_ID")
     out = inspect(discover_sources(folder))
     print(out if not out.startswith("no parcel") else
           f"no parcel datasets found in {folder}\nPut the extracted .gdb folder (or a GeoPackage / shapefile / zip) directly in that folder.")
