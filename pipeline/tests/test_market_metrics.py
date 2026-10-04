@@ -284,3 +284,15 @@ def test_potential_capture_not_flattered_by_curtailment(cfg):
     assert s["capture_rate"] == pytest.approx(60 / 50)                          # delivered only in the 60 $/MWh hour
     assert s["capture_rate_potential"] == pytest.approx(20 / 50)                # average of 60 and -20 over HSL
     assert s["peak_hsl_ratio_recent"] == pytest.approx(s["peak_hsl_ratio"])
+
+
+def test_unit_history_shows_when_units_started(tmp_path, monkeypatch, cfg):
+    monkeypatch.setattr(ercot_history, "raw_dir", lambda s: tmp_path / s)
+    d = tmp_path / "ercot" / "sced_15min"
+    d.mkdir(parents=True)
+    for day, hsl in (("2026-05-10", 0.0), ("2026-06-10", 50.0)):
+        g = sced_rows(resource="NEW_U1", day=day, hsl=hsl, bp=hsl, tno=hsl)
+        metrics.sced_to_15min(g, cfg).to_parquet(d / f"{day}.parquet")
+    monkeypatch.setattr(ercot_history, "window", lambda cfg: (dt.date(2026, 5, 1), dt.date(2026, 6, 30)))
+    out = ercot_history.history(["NEW_U1", "OTHER"])
+    assert "2026-05" in out and "2026-06" in out and "50.0" in out and "NEW_U1" in out

@@ -234,7 +234,8 @@ def run(since: dt.date | None = None, until: dt.date | None = None, xwalk: pd.Da
     return {"start": start, "end": end, "days": len(days), "fetched": len(todo), "failed": failed, "gaps": gaps}
 
 
-def load_cached(start: dt.date, end: dt.date, resources: set[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_cached(start: dt.date, end: dt.date, resources: set[str] | None = None,
+                prices: bool = True) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Concatenate the cached day files in [start, end]. resources limits SCED rows to those resource names (the
     crosswalk's), which keeps the frame to ~1/3 of all PV resources and the metrics step to a few minutes."""
     def read(folder: Path, keep: set[str] | None, col: str | None) -> pd.DataFrame:
@@ -248,7 +249,7 @@ def load_cached(start: dt.date, end: dt.date, resources: set[str] | None = None)
         return pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
 
     base = raw_dir("ercot")
-    return read(base / "sced_15min", resources, "resource_name"), read(base / "spp_15min", None, None)
+    return read(base / "sced_15min", resources, "resource_name"), (read(base / "spp_15min", None, None) if prices else pd.DataFrame())
 
 
 def find(patterns: list[str], day: dt.date) -> None:
@@ -273,6 +274,23 @@ def find(patterns: list[str], day: dt.date) -> None:
     print("\n".join(f"  {v}" for v in locs) if locs else "  none")
 
 
+def history(resources: list[str]) -> str:
+    """Month-by-month peak output ceiling (HSL, MW) and generation (MWh) of SCED resources, from the cached days.
+
+    Shows when a unit started producing and at what size: use it to tell phases apart when a crosswalk sum does not
+    match the plant's MW (compare against the plant's COD and nameplate)."""
+    cfg = load_config()
+    start, end = window(cfg)
+    sced, _ = load_cached(start, end, set(resources), prices=False)
+    if sced.empty:
+        return f"no cached SCED rows for {resources}"
+    sced["month"] = sced["interval_start"].dt.tz_convert(metrics.TZ).dt.strftime("%Y-%m")
+    sced["hsl_mw"] = sced["hsl_mwh"] / sced["hours"].where(sced["hours"] > 0)
+    peak = sced.pivot_table(index="month", columns="resource_name", values="hsl_mw", aggfunc="max").round(1)
+    gen = sced.pivot_table(index="month", columns="resource_name", values="gen_mwh", aggfunc="sum").round(0)
+    return f"peak HSL (MW) by month\n{peak.to_string()}\n\ngeneration (MWh) by month\n{gen.to_string()}"
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -281,7 +299,12 @@ if __name__ == "__main__":
 
     load_env()
     ap = argparse.ArgumentParser(description="look up ERCOT resource / settlement-point names")
-    ap.add_argument("--find", nargs="+", required=True, metavar="TEXT")
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--find", nargs="+", metavar="TEXT", help="search SCED resource names and SPP nodes (fetches one day)")
+    g.add_argument("--history", nargs="+", metavar="RESOURCE", help="monthly peak HSL and generation from the cache")
     ap.add_argument("--day", type=dt.date.fromisoformat, default=dt.date(2026, 7, 15))
     a = ap.parse_args()
-    find(a.find, a.day)
+    if a.history:
+        print(history(a.history))
+    else:
+        find(a.find, a.day)
