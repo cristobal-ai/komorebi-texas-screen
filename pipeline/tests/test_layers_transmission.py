@@ -121,12 +121,13 @@ def test_run_py_phase4_is_explicit_not_part_of_all():
 
 def test_plant_bboxes_cover_every_plant_and_share_boxes_in_one_grid_cell(plants, cfg):
     boxes = t.plant_bboxes(plants, cfg)
-    assert len(boxes) == 3                                   # plants sit in three different 0.5-degree cells
-    assert all(b[2] - b[0] == pytest.approx(2.5) and b[3] - b[1] == pytest.approx(2.5) for b in boxes)
+    w = 2 * cfg["layers"]["transmission"]["bbox_half_deg"]
+    assert len(boxes) == 3                                   # plants sit in three different snap-grid cells
+    assert all(b[2] - b[0] == pytest.approx(w) and b[3] - b[1] == pytest.approx(w) for b in boxes)
     for lat, lon in zip(plants["lat"], plants["lon"]):
         assert any(b[0] <= lat <= b[2] and b[1] <= lon <= b[3] for b in boxes)
     near = plants.copy()
-    near["lat"], near["lon"] = [31.05, 31.1, 31.0], [-103.1, -103.05, -102.95]      # all within the 0.5-degree cell at (31, -103)
+    near["lat"], near["lon"] = [31.05, 31.1, 31.0], [-103.1, -103.05, -102.95]      # all within the snap-grid cell at (31, -103)
     assert len(t.plant_bboxes(near, cfg)) == 1
 
 
