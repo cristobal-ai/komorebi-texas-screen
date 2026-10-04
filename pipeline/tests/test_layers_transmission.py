@@ -181,3 +181,21 @@ def test_distances_beyond_search_radius_are_missing_not_far(plants, cfg):
     out = t.compute(plants, _layer([], "line"), far, cfg, "osm", "2026-10-04")
     assert out["dist_345kv_sub_mi"].isna().all() and out["nearest_345kv_sub_name"].isna().all()
     assert (out["transmission_search_mi"] == cfg["layers"]["transmission"]["search_radius_mi"]).all()
+
+
+def test_report_table_joins_plant_names_and_filters_county(tmp_path, monkeypatch):
+    from pipeline.phase_4_geo import report as rp
+
+    layer = pd.DataFrame({"eia_id": [1, 2], "dist_345kv_sub_mi": [3.0, 9.0], "nearest_345kv_sub_name": ["A", "B"],
+                          "dist_345kv_line_mi": [1.0, 2.0], "dist_138kv_line_mi": [0.5, 0.6],
+                          "kv_classes_within_near": ["345", None], "poi_kv_seen": [True, False],
+                          "transmission_confidence": ["medium", "medium"]})
+    plants = pd.DataFrame({"eia_id": [1, 2], "plant_name": ["P1", "P2"], "county": ["Pecos", "Ward"], "tier": ["T1b", "T2"],
+                           "ac_mw": [100.0, 50.0], "grid_voltage_kv": [345.0, 138.0]})
+    (tmp_path / "layers").mkdir()
+    layer.to_parquet(tmp_path / "layers" / "transmission.parquet")
+    plants.to_parquet(tmp_path / "plants.parquet")
+    monkeypatch.setattr(rp, "LAYERS_DIR", tmp_path / "layers")
+    monkeypatch.setattr(rp, "DATA_DIR", tmp_path)
+    out = rp.table("transmission", "pecos")
+    assert list(out["plant_name"]) == ["P1"] and out.iloc[0]["dist_345kv_sub_mi"] == 3.0
