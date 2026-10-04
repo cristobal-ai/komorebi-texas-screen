@@ -200,6 +200,11 @@ def test_report_table_joins_plant_names_and_filters_county(tmp_path, monkeypatch
     monkeypatch.setattr(rp, "DATA_DIR", tmp_path)
     out = rp.table("transmission", "pecos")
     assert list(out["plant_name"]) == ["P1"] and out.iloc[0]["dist_345kv_sub_mi"] == 3.0
+    assert list(rp.poi_mismatch()["plant_name"]) == ["P2"]                        # P2 has poi_kv_seen False
+    plants2 = pd.concat([plants, pd.DataFrame({"eia_id": [3], "plant_name": ["Failed"], "county": ["Pecos"], "tier": ["T1b"],
+                                               "ac_mw": [10.0], "grid_voltage_kv": [345.0]})])
+    plants2.to_parquet(tmp_path / "plants.parquet")
+    assert "Failed" not in set(rp.table("transmission")["plant_name"])             # plants outside the layer are not listed
 
 
 OSM_XML = """<?xml version='1.0' encoding='UTF-8'?>
