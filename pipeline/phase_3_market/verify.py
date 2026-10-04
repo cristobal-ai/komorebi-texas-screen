@@ -71,7 +71,7 @@ def candidate_table(plant: dict, units: pd.DataFrame, xw: pd.DataFrame, sced: pd
             tot = free.loc[list(combo), "mw"].sum()
             err = abs(tot - plant["ac_mw"]) / plant["ac_mw"]
             if err <= 0.15:
-                best.append((err, tot, [free.loc[i, "unit_code"] for i in combo]))
+                best.append((err, tot, sorted(free.loc[i, "unit_code"] for i in combo)))
     best.sort(key=lambda t: (t[0], len(t[2])))
     lines.append("  free-unit sets within 15% of the plant's MW:")
     lines += [f"    {tot:7.1f} MW ({err:.1%})  {'+'.join(codes)}" for err, tot, codes in best[:6]] or ["    none"]

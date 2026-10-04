@@ -249,4 +249,4 @@ def test_candidate_table_lists_same_county_and_similar_names_with_sums():
                                  {"JAY_UNIT1": "JAY_RN_1"}, {"solar", "project"})
     assert "JAY_UNIT1" in out and "JAY_UNIT2" in out and "FAR_U1" not in out
     assert "current match" in out and "JAY_RN_1" in out and "66.0" in out
-    assert "227.5 MW (0.0%)  JAY_UNIT1+JAY_UNIT2" in out or "JAY_UNIT1+JAY_UNIT2" in out   # own unit counts as free
+    assert "227.5 MW (0.0%)  JAY_UNIT1+JAY_UNIT2" in out                       # the plant's own unit counts as free
