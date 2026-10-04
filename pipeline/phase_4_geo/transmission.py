@@ -329,5 +329,5 @@ def run(session=requests) -> Path:
     df = compute(plants, lines, subs, cfg, source, fetched)
     n345 = int(df["dist_345kv_sub_mi"].notna().sum())
     log.info("transmission: %d plants; 345 kV substation found for %d; POI voltage seen nearby for %d of %d with an EIA POI",
-             len(df), n345, int((df["poi_kv_seen"] == True).sum())  # noqa: E712, int(df["poi_kv_seen"].notna().sum()))
+             len(df), n345, int((df["poi_kv_seen"] == True).sum()), int(df["poi_kv_seen"].notna().sum()))
     return g.write_layer(NAME, df)
