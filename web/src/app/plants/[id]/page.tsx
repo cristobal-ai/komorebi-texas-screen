@@ -1,7 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { num, pct, text, yearMonth, yesNo, type Plant } from "@/lib/plants";
+import {
+  MONTHLY_COLUMNS,
+  fullMonths,
+  metricsStatusLabel,
+  num,
+  pct,
+  text,
+  yearMonth,
+  yesNo,
+  type MonthlyMetric,
+  type Plant,
+} from "@/lib/plants";
+import MonthlyCharts from "./monthly-charts";
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +49,26 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   if (!data) notFound();
   const p = data as Plant;
 
+  const { data: monthlyData, error: monthlyError } = await supabase
+    .from("plant_metrics_monthly")
+    .select(MONTHLY_COLUMNS)
+    .eq("eia_id", eiaId)
+    .order("month", { ascending: true });
+  if (monthlyError) throw new Error(monthlyError.message);
+  const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
+  const months = fullMonths(allMonths);
+
   const flags: string[] = [];
   if (p.sb6_review_required) flags.push(`SB6 co-location review: planned load ${num(p.planned_load_mw)} MW is at or above the large-load threshold`);
   if (p.tax_equity_consent_likely) flags.push("Tax-equity consent likely (COD ≥ 2019)");
   if (p.itc_recapture_open) flags.push("ITC recapture window may be open (COD within 5 years)");
   if (p.non_ercot_texas) flags.push(`Outside ERCOT balancing authority (${text(p.ba_code)})`);
   if (p.distribution_class_poi) flags.push("Distribution-class POI (at or below the config distribution-voltage limit)");
+  if (p.metrics_status !== "ok") flags.push(`Market metrics unavailable: ${metricsStatusLabel(p.metrics_status)}`);
+  if (p.peak_hsl_ratio_recent !== null && p.peak_hsl_ratio_recent < 0.75)
+    flags.push(
+      `Recent output ceiling is ${pct(p.peak_hsl_ratio_recent, 0)} of nameplate over the last 3 full months: possible derate or outage (a price signal, not a defect)`,
+    );
   if (p.filter_status === "review") flags.push(`Footprint unresolved: ${text(p.filter_reasons)}`);
 
   return (
@@ -119,6 +145,20 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
         <Section
+          title={`Market (SCED + real-time SPP${p.metrics_window_start ? `, ${p.metrics_window_start} to ${p.metrics_window_end}` : ""})`}
+          rows={[
+            ["Status", metricsStatusLabel(p.metrics_status), p.metrics_window_months ? `${p.metrics_window_months} full months` : undefined],
+            ["Capture rate (potential)", num(p.capture_rate_potential, 2), "HSL-weighted node price ÷ hub average; the scored measure"],
+            ["Capture rate (delivered)", num(p.capture_rate, 2), "flattered by curtailment"],
+            ["Shape × basis", `${num(p.shape_capture, 2)} × ${num(p.basis_ratio, 2)}`, "solar-hours discount × location discount (delivered)"],
+            ["Curtailment", pct(p.curtailment_pct), "share of available output dispatched down"],
+            ["Capacity factor", `${pct(p.sced_net_cf)} net · ${pct(p.sced_potential_cf)} potential`, `EIA-923 ${p.cf_year ?? ""}: ${pct(p.net_ac_cf)}`],
+            ["Peak HSL ÷ nameplate", `${num(p.peak_hsl_ratio, 2)} window · ${num(p.peak_hsl_ratio_recent, 2)} last 3 months`, "low = derated, part-built or out"],
+            ["ERCOT resource(s)", text(p.ercot_resources), p.ercot_resource_shared ? "unit shared with another EIA plant" : undefined],
+            ["Settlement point", text(p.ercot_settlement_points)],
+          ]}
+        />
+        <Section
           title="Location & provenance"
           rows={[
             ["Latitude, longitude", p.lat !== null && p.lon !== null ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : "—"],
@@ -128,8 +168,10 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
       </div>
+      <MonthlyCharts rows={months} excluded={allMonths.length - months.length} />
       <p className="mt-6 text-xs text-neutral-500">
-        Not scored yet (Phases 3–5 add curtailment, capture rate, geo layers and the composite score).
+        Not scored yet (Phases 4–5 add geo layers and the composite score). Low capture rate and high curtailment are
+        price signals and will score higher, never be filtered out.
       </p>
     </main>
   );

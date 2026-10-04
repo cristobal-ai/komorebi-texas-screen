@@ -3,6 +3,15 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* chart tokens: validated with the dataviz palette script (categorical slots 1-2, light surface #fcfcfb) */
+  --viz-surface: #fcfcfb;
+  --viz-ink: #0b0b0b;
+  --viz-ink-2: #52514e;
+  --viz-muted: #898781;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #c3c2b7;
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
 }
 
 @theme inline {
@@ -16,6 +25,14 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --viz-surface: #1a1a19;
+    --viz-ink: #ffffff;
+    --viz-ink-2: #c3c2b7;
+    --viz-muted: #898781;
+    --viz-grid: #2c2c2a;
+    --viz-axis: #383835;
+    --viz-series-1: #3987e5;
+    --viz-series-2: #d95926;
   }
 }
 

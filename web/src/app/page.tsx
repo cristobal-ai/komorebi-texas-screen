@@ -14,7 +14,7 @@ export default async function Home() {
       <h1 className="text-xl font-semibold">ERCOT PV plants — screen v0.1</h1>
       <p className="mt-1 max-w-3xl text-sm text-neutral-600 dark:text-neutral-400">
         Plants passing the hard filters (≥10 MW AC, COD 2015–2022, Texas) from USPVDB v4.0 + EIA-860M/860/923. Not
-        scored yet: sort by any column. Low capacity factor is a price signal, not a defect. “Review” = footprint
+        scored yet: sort by any column, including the new market columns from the SCED backfill. Low capacity factor is a price signal, not a defect. “Review” = footprint
         unresolved until parcel data (array area alone is below the site-footprint thresholds).
       </p>
       {error ? (

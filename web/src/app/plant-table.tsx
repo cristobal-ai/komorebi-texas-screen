@@ -10,10 +10,43 @@ import {
   useReactTable,
   type SortingState,
 } from "@tanstack/react-table";
-import { TIERS, num, pct, text, yearMonth, type TableRow, type Tier } from "@/lib/plants";
+import { TIERS, metricsStatusLabel, num, pct, text, yearMonth, type TableRow, type Tier } from "@/lib/plants";
 
 const col = createColumnHelper<TableRow>();
 const TIER_ORDER: Record<string, number> = { T1b: 0, T1a: 1, T2: 2, T3: 3 };
+
+/** Market-metric column: a blank is never a zero, hover says why (behind the meter, not telemetered, not verified). */
+function metric(
+  id: string,
+  header: string,
+  pick: (r: TableRow) => number | null,
+  format: (v: number) => string,
+  flag?: (v: number) => boolean,
+) {
+  return col.accessor((r) => pick(r) ?? undefined, {
+    id,
+    header,
+    sortUndefined: "last",
+    meta: { numeric: true },
+    cell: (c) => {
+      const v = c.getValue();
+      if (v === undefined) {
+        return (
+          <span title={metricsStatusLabel(c.row.original.metrics_status)} className="text-neutral-400">
+            —
+          </span>
+        );
+      }
+      return flag?.(v) ? (
+        <span title="Output ceiling well below nameplate over the last 3 months: possible derate or outage">
+          {format(v)} ▼
+        </span>
+      ) : (
+        format(v)
+      );
+    },
+  });
+}
 
 const columns = [
   col.accessor("plant_name", {
@@ -44,6 +77,10 @@ const columns = [
     cell: (c) => pct(c.getValue()) + (c.row.original.cf_series_resolution === "annual" ? " (a)" : ""),
     meta: { numeric: true },
   }),
+  metric("capture_rate_potential", "Capture (pot.)", (r) => r.capture_rate_potential, (v) => num(v, 2)),
+  metric("curtailment_pct", "Curtail", (r) => r.curtailment_pct, (v) => pct(v)),
+  metric("sced_net_cf", "SCED CF", (r) => r.sced_net_cf, (v) => pct(v)),
+  metric("peak_hsl_ratio_recent", "Recent peak", (r) => r.peak_hsl_ratio_recent, (v) => num(v, 2), (v) => v < 0.75),
   col.accessor("planned_load_mw", { header: "Load MW", cell: (c) => num(c.getValue()), meta: { numeric: true } }),
   col.accessor("sb6_review_required", { header: "SB6", cell: (c) => (c.getValue() ? "Yes" : "No") }),
   col.accessor("filter_status", { header: "Status", cell: (c) => c.getValue() }),
@@ -117,8 +154,14 @@ export default function PlantTable({ rows }: { rows: TableRow[] }) {
         {filtered.length} plants · {num(totalMw)} MW AC · click headers to sort (shift-click for a second key) · *
         ILR assumed (no reported DC) · (a) CF from an annual EIA-923 respondent
       </p>
+      <p className="mt-1 text-xs text-neutral-500">
+        Market columns (SCED + real-time prices, last 30 full months): Capture (pot.) = HSL-weighted node price ÷ hub
+        average · Curtail = share of available output dispatched down · Recent peak = highest output ceiling over the
+        last 3 months ÷ nameplate (▼ below 0.75). — = no metrics; hover for the reason. Low capture and high
+        curtailment are price signals, not defects.
+      </p>
       <div className="mt-2 overflow-x-auto rounded border border-neutral-200 dark:border-neutral-800">
-        <table className="w-full min-w-[960px] text-sm">
+        <table className="w-full min-w-[1240px] text-sm">
           <thead className="bg-neutral-50 dark:bg-neutral-900">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
