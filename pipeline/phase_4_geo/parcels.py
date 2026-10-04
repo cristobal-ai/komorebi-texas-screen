@@ -310,4 +310,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="parcel files: --inspect lists layers, CRS, fields")
     ap.add_argument("--inspect", action="store_true", required=True)
     ap.parse_args()
-    print(inspect(discover_sources(raw_dir(NAME) / "manual")))
+    folder = raw_dir(NAME) / "manual"
+    out = inspect(discover_sources(folder))
+    print(out if not out.startswith("no parcel") else
+          f"no parcel datasets found in {folder}\nPut the extracted .gdb folder (or a GeoPackage / shapefile / zip) directly in that folder.")
