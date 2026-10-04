@@ -4,6 +4,7 @@
     python -m pipeline.run --phase 2 --county Pecos   # plant master + Pecos hand-check report
     python -m pipeline.run --phase 1-2 --county Pecos
     python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
+    python -m pipeline.run --phase 4 --layer transmission [--load]   # geo layers (see pipeline/phase_4_geo)
     python -m pipeline.run --phase 3b                 # 3b: SCED + SPP history → curtailment, capture rate
     python -m pipeline.run --phase 3b --since 2026-07-15 --until 2026-07-15   # one-day probe
 """
@@ -17,12 +18,13 @@ import geopandas as gpd
 
 from pipeline.common import DATA_DIR, load_env
 
-IMPLEMENTED = {1, 2, 3}
+IMPLEMENTED = {1, 2, 3, 4}
+DEFAULT_ALL = [1, 2, 3]   # phase 4 layers download several sources; run them explicitly (--phase 4)
 
 
 def _phases(spec: str) -> list[int]:
     if spec == "all":
-        return sorted(IMPLEMENTED)
+        return list(DEFAULT_ALL)
     if "-" in spec:
         a, b = spec.split("-")
         return list(range(int(a), int(b) + 1))
@@ -37,6 +39,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--until", type=dt.date.fromisoformat, default=None, help="3b: last operating day")
     ap.add_argument("--no-fetch", action="store_true", help="3b: compute from cached days only")
     ap.add_argument("--retry-missing", action="store_true", help="3b: re-fetch days ERCOT previously returned no data for")
+    ap.add_argument("--layer", default="all", help="4: one geo layer (transmission) or all")
     ap.add_argument("--load", action="store_true", help="after phase 2, write pass/review plants to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -71,6 +74,19 @@ def main(argv: list[str] | None = None) -> None:
                 from pipeline import load_supabase
 
                 load_supabase.run()
+        elif n == 4:
+            from pipeline.phase_4_geo import load as layer_load
+            from pipeline.phase_4_geo import transmission
+
+            layers = {"transmission": transmission.run}
+            names = sorted(layers) if args.layer == "all" else [args.layer]
+            unknown = [x for x in names if x not in layers]
+            if unknown:
+                raise SystemExit(f"unknown layer {unknown}; available: {sorted(layers)}")
+            for name in names:
+                layers[name]()
+            if args.load:
+                layer_load.run(names)
         elif n == 3:
             from pipeline.phase_1_ingest import ercot
             from pipeline.phase_3_market import crosswalk

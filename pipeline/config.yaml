@@ -89,6 +89,20 @@ sources:                       # download locations; a file dropped in data/raw/
     sced_days_back: 62           # disclosure lags 60 days; ask for a day just past the lag
     sced_pv_resource_type: PVGR
 
+# Phase 4 geo layers. Each layer writes data/layers/<name>.parquet and Supabase table layers_<name>.
+layers:
+  transmission:
+    # Primary: OpenStreetMap power lines/substations (>= 100 kV) for Texas via Overpass. A HIFLD transmission-line
+    # file (data.gov / Data Rescue Project mirror) dropped in data/raw/transmission/manual/ replaces OSM for lines.
+    overpass_urls:
+      - https://overpass-api.de/api/interpreter
+      - https://overpass.kumi.systems/api/interpreter
+    overpass_timeout_s: 600
+    min_kv: 100                  # lines below this are not fetched
+    kv_classes: [138, 230, 345, 500]   # reported as the voltage classes seen near a plant
+    near_miles: 3                # radius for kv_classes_within_near and the POI-voltage cross-check
+    class_tolerance: 0.05        # a line of 138.0 kV matches an EIA POI of 138 kV within 5%
+
 units:
   m2_per_acre: 4046.8564224
 
