@@ -117,3 +117,67 @@ def test_run_py_phase4_is_explicit_not_part_of_all():
     from pipeline import run as r
 
     assert r._phases("all") == [1, 2, 3] and r._phases("4") == [4]
+
+
+def test_plant_bboxes_cover_every_plant_and_share_boxes_in_one_grid_cell(plants, cfg):
+    boxes = t.plant_bboxes(plants, cfg)
+    assert len(boxes) == 3                                   # plants sit in three different 0.5-degree cells
+    assert all(b[2] - b[0] == pytest.approx(2.5) and b[3] - b[1] == pytest.approx(2.5) for b in boxes)
+    for lat, lon in zip(plants["lat"], plants["lon"]):
+        assert any(b[0] <= lat <= b[2] and b[1] <= lon <= b[3] for b in boxes)
+    near = plants.copy()
+    near["lat"], near["lon"] = [31.05, 31.1, 31.0], [-103.1, -103.05, -102.95]      # all within the 0.5-degree cell at (31, -103)
+    assert len(t.plant_bboxes(near, cfg)) == 1
+
+
+class FakeOverpass:
+    def __init__(self):
+        self.queries = []
+
+    def post(self, url, data, timeout, headers):
+        q = data["data"]
+        self.queries.append(q)
+
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self_inner):
+                if "power\"=\"line" in q:
+                    return {"elements": [{"type": "way", "id": 11, "tags": {"voltage": "345000"},
+                                          "geometry": [{"lat": 31.0, "lon": -103.05}, {"lat": 31.2, "lon": -103.05}]}]}
+                return {"elements": [{"type": "node", "id": 12, "lat": 31.1, "lon": -103.0,
+                                      "tags": {"voltage": "345000", "name": "Solstice"}}]}
+        return R()
+
+
+def test_fetch_osm_uses_boxes_caches_them_and_dedupes(plants, cfg, tmp_path, monkeypatch):
+    monkeypatch.setattr(t, "raw_dir", lambda s: tmp_path / s)
+    (tmp_path / "transmission").mkdir()
+    s = FakeOverpass()
+    lines, subs, fetched = t.fetch_osm(plants, cfg, s, sleep=lambda x: None)
+    n = len(t.plant_bboxes(plants, cfg))
+    assert len(s.queries) == 2 * n and n == 3
+    assert len(lines) == 1 and len(subs) == 1                # the same way/node came back from every box → one row
+    t.fetch_osm(plants, cfg, s, sleep=lambda x: None)
+    assert len(s.queries) == 2 * n                           # second run is all cache
+
+
+def test_overpass_retries_other_mirror_then_raises(cfg):
+    class Bad:
+        calls = 0
+
+        def post(self, url, **kw):
+            Bad.calls += 1
+            raise RuntimeError("504")
+
+    with pytest.raises(RuntimeError, match="all Overpass endpoints failed"):
+        t._overpass("q", cfg, Bad(), sleep=lambda x: None)
+    assert Bad.calls == 3 * len(cfg["layers"]["transmission"]["overpass_urls"])
+
+
+def test_distances_beyond_search_radius_are_missing_not_far(plants, cfg):
+    far = _layer([("n9", "Far", 345, Point(-100.0, 31.0))], "sub")        # ~180 mi away
+    out = t.compute(plants, _layer([], "line"), far, cfg, "osm", "2026-10-04")
+    assert out["dist_345kv_sub_mi"].isna().all() and out["nearest_345kv_sub_name"].isna().all()
+    assert (out["transmission_search_mi"] == cfg["layers"]["transmission"]["search_radius_mi"]).all()

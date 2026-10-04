@@ -10,6 +10,7 @@ create table public.layers_transmission (
   kv_classes_within_near   text,               -- voltage classes (kV, ';'-joined) of lines within near_miles (config)
   max_kv_within_near       double precision,
   poi_kv_seen              boolean,            -- a line at the EIA POI voltage runs within near_miles; null = no EIA POI voltage
+  transmission_search_mi   double precision,   -- coverage radius of the query: a null distance means none within this many miles
   transmission_source      text,               -- osm | hifld lines + osm substations
   transmission_fetched     date,
   transmission_confidence  text check (transmission_confidence in ('low', 'medium')),

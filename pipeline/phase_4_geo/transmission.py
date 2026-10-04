@@ -1,6 +1,6 @@
 """Layer 1: transmission. Distance from each plant to 345 kV substations and lines, and what voltage classes run nearby.
 
-Source: OpenStreetMap (`power=line`, `power=substation`, voltage >= 100 kV, Texas) via Overpass; or a HIFLD line file
+Source: OpenStreetMap (`power=line`, `power=substation`, voltage >= 100 kV) via Overpass, queried in boxes around the plants; or a HIFLD line file
 dropped in data/raw/transmission/manual/ (columns VOLTAGE kV or VOLT_CLASS). Both are partial in places, so every row
 carries `transmission_source`; the distance is a screen, not an interconnection study.
 
@@ -12,6 +12,7 @@ Output data/layers/transmission.parquet, one row per eia_id:
     kv_classes_within_near voltage classes (kV, ';'-joined) of lines within near_miles
     max_kv_within_near     highest of those
     poi_kv_seen            True/False/None: does a line at the plant's EIA POI voltage run within near_miles
+    transmission_search_mi  coverage radius: a missing distance means none within this many miles
     transmission_source, transmission_fetched, transmission_confidence
 """
 from __future__ import annotations
@@ -20,6 +21,7 @@ import datetime as dt
 import json
 import logging
 import re
+import time
 from pathlib import Path
 
 import geopandas as gpd
@@ -67,11 +69,27 @@ def hifld_kv(row) -> float:
 
 
 # ---- OpenStreetMap ----------------------------------------------------------------------------------------------------
-def overpass_queries(cfg: dict) -> tuple[str, str]:
+def plant_bboxes(plants: gpd.GeoDataFrame, cfg: dict) -> list[tuple[float, float, float, float]]:
+    """Unique (south, west, north, east) boxes covering every plant. A statewide Overpass query times out (504) on the
+    public servers, so ask only for the neighbourhood of the plants: boxes are centred on a snap grid so plants in the
+    same cell share one query."""
+    c = cfg["layers"]["transmission"]
+    snap, half = c["bbox_snap_deg"], c["bbox_half_deg"]
+    boxes = set()
+    for lat, lon in zip(plants["lat"], plants["lon"]):
+        if pd.isna(lat) or pd.isna(lon):
+            continue
+        cy, cx = round(round(lat / snap) * snap, 4), round(round(lon / snap) * snap, 4)
+        boxes.add((cy - half, cx - half, cy + half, cx + half))
+    return sorted(boxes)
+
+
+def overpass_queries(bbox: tuple[float, float, float, float], cfg: dict) -> tuple[str, str]:
     t = cfg["layers"]["transmission"]["overpass_timeout_s"]
-    head = f'[out:json][timeout:{t}];area["ISO3166-2"="US-TX"]->.tx;'
-    lines = head + f'(way["power"="line"]["voltage"~"{VOLT_RE}"](area.tx););out geom tags;'
-    subs = head + f'(nwr["power"="substation"]["voltage"~"{VOLT_RE}"](area.tx););out center tags;'
+    box = ",".join(f"{v:.4f}" for v in bbox)
+    head = f"[out:json][timeout:{t}];"
+    lines = head + f'(way["power"="line"]["voltage"~"{VOLT_RE}"]({box}););out geom tags;'
+    subs = head + f'(nwr["power"="substation"]["voltage"~"{VOLT_RE}"]({box}););out center tags;'
     return lines, subs
 
 
@@ -102,37 +120,62 @@ def parse_overpass(payload: dict, kind: str) -> gpd.GeoDataFrame:
         {"osm_id": [], "name": [], "operator": [], "voltage_kv": []}, geometry=[], crs="EPSG:4326")
 
 
-def _overpass(query: str, cfg: dict, session=requests) -> dict:
+def _overpass(query: str, cfg: dict, session=requests, sleep=time.sleep) -> dict:
+    c = cfg["layers"]["transmission"]
     errors = []
-    for url in cfg["layers"]["transmission"]["overpass_urls"]:
-        try:
-            r = session.post(url, data={"data": query}, timeout=cfg["layers"]["transmission"]["overpass_timeout_s"] + 60,
-                             headers={"User-Agent": "komorebi-texas-screen/0.1"})
-            r.raise_for_status()
-            return r.json()
-        except Exception as e:           # next mirror
-            errors.append(f"{url}: {e}")
-            log.warning("Overpass failed %s: %s", url, e)
-    raise RuntimeError("all Overpass endpoints failed:\n  " + "\n  ".join(errors))
+    for attempt in range(3):                       # 3 rounds over the mirrors, 20 s / 40 s pause between rounds
+        for url in c["overpass_urls"]:
+            try:
+                r = session.post(url, data={"data": query}, timeout=c["overpass_timeout_s"] + 60,
+                                 headers={"User-Agent": "komorebi-texas-screen/0.1"})
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:                 # next mirror / next round
+                errors.append(f"{url}: {e}")
+                log.warning("Overpass failed %s: %s", url, e)
+        if attempt < 2:
+            sleep(20 * (attempt + 1))
+    raise RuntimeError("all Overpass endpoints failed:\n  " + "\n  ".join(errors[-6:]))
 
 
-def fetch_osm(cfg: dict, session=requests) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
-    """Cached under data/raw/transmission/osm_{lines,substations}.parquet; delete them to refresh."""
-    d = raw_dir(NAME)
-    lp, sp, mp = d / "osm_lines.parquet", d / "osm_substations.parquet", d / "osm_fetched.txt"
-    if lp.exists() and sp.exists():
-        log.info("cache hit %s", lp)
-        return gpd.read_parquet(lp), gpd.read_parquet(sp), mp.read_text().strip() if mp.exists() else ""
-    q_lines, q_subs = overpass_queries(cfg)
-    log.info("Overpass: Texas power lines >= %s kV (can take a few minutes)", cfg["layers"]["transmission"]["min_kv"])
-    lines = parse_overpass(_overpass(q_lines, cfg, session), "line")
-    log.info("Overpass: %d line segments; now substations", len(lines))
-    subs = parse_overpass(_overpass(q_subs, cfg, session), "substation")
-    log.info("Overpass: %d substations", len(subs))
-    lines.to_parquet(lp)
-    subs.to_parquet(sp)
-    mp.write_text(dt.date.today().isoformat())
-    return lines, subs, dt.date.today().isoformat()
+def _box_key(b) -> str:
+    return "_".join(f"{v:+.2f}".replace(".", "p") for v in b)
+
+
+def fetch_osm(plants: gpd.GeoDataFrame, cfg: dict, session=requests,
+              sleep=time.sleep) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame, str]:
+    """Lines and substations around the plants. Each box is cached under data/raw/transmission/osm/ and never
+    re-fetched; adding plants in a new area fetches only the new boxes. Delete the folder to refresh."""
+    d = raw_dir(NAME) / "osm"
+    d.mkdir(exist_ok=True)
+    boxes = plant_bboxes(plants, cfg)
+    frames_l, frames_s = [], []
+    pause = cfg["layers"]["transmission"]["pause_s"]
+    for i, b in enumerate(boxes, 1):
+        key = _box_key(b)
+        lp, sp = d / f"lines_{key}.parquet", d / f"subs_{key}.parquet"
+        if not (lp.exists() and sp.exists()):
+            q_lines, q_subs = overpass_queries(b, cfg)
+            lines = parse_overpass(_overpass(q_lines, cfg, session, sleep), "line")
+            sleep(pause)
+            subs = parse_overpass(_overpass(q_subs, cfg, session, sleep), "substation")
+            lines.to_parquet(lp)
+            subs.to_parquet(sp)
+            log.info("Overpass box %d/%d %s: %d line segments, %d substations", i, len(boxes), b, len(lines), len(subs))
+            sleep(pause)
+        frames_l.append(gpd.read_parquet(lp))
+        frames_s.append(gpd.read_parquet(sp))
+
+    def merge(frames):
+        frames = [f for f in frames if len(f)]
+        if not frames:
+            return gpd.GeoDataFrame({"osm_id": [], "name": [], "operator": [], "voltage_kv": []}, geometry=[], crs="EPSG:4326")
+        out = pd.concat(frames, ignore_index=True)
+        return gpd.GeoDataFrame(out.drop_duplicates("osm_id"), geometry="geometry", crs="EPSG:4326")
+
+    stamp = max((dt.datetime.fromtimestamp(p.stat().st_mtime).date() for p in d.glob("*.parquet")),
+                default=dt.date.today()).isoformat()
+    return merge(frames_l), merge(frames_s), stamp
 
 
 # ---- HIFLD override ---------------------------------------------------------------------------------------------------
@@ -178,6 +221,10 @@ def compute(plants: gpd.GeoDataFrame, lines: gpd.GeoDataFrame, subs: gpd.GeoData
         return bool(cls and any(abs(float(k) - poi) <= poi * c["class_tolerance"] for k in cls.split(";")))
 
     out["poi_kv_seen"] = [poi_seen(p, k) for p, k in zip(out["eia_id"], out["kv_classes_within_near"])]
+    for col in ("dist_345kv_sub_mi", "dist_345kv_line_mi", "dist_138kv_line_mi"):
+        out.loc[out[col] > c["search_radius_mi"], col] = np.nan      # beyond the covered radius the nearest feature may be missing
+    out.loc[out["dist_345kv_sub_mi"].isna(), "nearest_345kv_sub_name"] = None
+    out["transmission_search_mi"] = c["search_radius_mi"]      # a missing distance means "none within this radius"
     out["transmission_source"] = source
     out["transmission_fetched"] = fetched
     # OSM and HIFLD are crowd-sourced / aged: never 'measured'. Low where the plant had no polygon (centroid only).
@@ -188,7 +235,7 @@ def compute(plants: gpd.GeoDataFrame, lines: gpd.GeoDataFrame, subs: gpd.GeoData
 def run(session=requests) -> Path:
     cfg = load_config()
     plants = g.load_plants()
-    lines, subs, fetched = fetch_osm(cfg, session)
+    lines, subs, fetched = fetch_osm(plants, cfg, session)
     source = "osm"
     manual = manual_file(NAME, (".zip", ".shp", ".geojson", ".json", ".gpkg"))
     if manual:

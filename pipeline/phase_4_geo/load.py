@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 # Must match supabase/migrations/*_layers_<name>.sql (minus loaded_at); a test enforces it.
 TRANSMISSION_COLUMNS = [
     "eia_id", "dist_345kv_sub_mi", "nearest_345kv_sub_name", "dist_345kv_line_mi", "dist_138kv_line_mi",
-    "kv_classes_within_near", "max_kv_within_near", "poi_kv_seen", "transmission_source", "transmission_fetched",
+    "kv_classes_within_near", "max_kv_within_near", "poi_kv_seen", "transmission_search_mi", "transmission_source", "transmission_fetched",
     "transmission_confidence", "run_id",
 ]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS}
