@@ -113,6 +113,27 @@ layers:
     near_miles: 3                # radius for kv_classes_within_near and the POI-voltage cross-check
     class_tolerance: 0.05        # a line of 138.0 kV matches an EIA POI of 138 kV within 5%
 
+  parcels:
+    # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
+    # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each
+    # plant is read (bounding-box query) and cached under data/raw/parcels/selected/, so a big file can be deleted afterwards.
+    neighborhood_m: 3000         # parcels within this distance of the array are read (same-owner expansion is limited to it)
+    min_overlap_acres: 1.0       # a parcel is a "host" when the array overlaps it by >= this ...
+    min_overlap_frac: 0.02       # ... or by >= this share of the array (slivers from digitising are not hosts)
+    adjacency_tol_m: 2           # touching = within this distance
+    max_expansion_rounds: 6      # same-owner contiguous parcels are added breadth-first up to this many steps
+    unified_min_owner_share: 0.90  # unified land control: one owner holds >= this share of the host-parcel acres
+    point_buffer_m: 100          # plants with no USPVDB polygon: parcels within this distance of the EIA point (confidence low)
+    owner_stopwords: [llc, lp, llp, lllp, inc, corp, corporation, co, company, ltd, trust, tr, et, al, ux, vir, estate, of, the]
+    fields:                      # candidate column names (normalised) per attribute, first match wins
+      owner: [owner_name, ownername, owner, own_name, owner1]
+      prop_id: [prop_id, propid, geo_id, geoid, property_id]
+      land_use: [stat_land_use, state_cd, land_use, loc_land_use, landuse]
+      market_value: [mkt_value, market_value, market, total_value, appraised, tot_value]
+      land_value: [land_value, landvalue, land_val]
+      county: [county, county_name, cnty_name, countyname]
+      year: [tax_year, taxyear, year, data_year, source_year]
+
 units:
   m2_per_acre: 4046.8564224
 

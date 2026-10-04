@@ -20,7 +20,13 @@ TRANSMISSION_COLUMNS = [
     "kv_classes_within_near", "max_kv_within_near", "poi_kv_seen", "transmission_search_mi", "transmission_source", "transmission_fetched",
     "transmission_confidence", "run_id",
 ]
-LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS}
+PARCELS_COLUMNS = [
+    "eia_id", "parcel_status", "n_host_parcels", "parcel_acres_host", "parcel_acres_unified", "adjacent_same_owner_acres",
+    "host_cover_share", "headroom_pct_host", "headroom_pct_unified", "acres_per_mw_parcel", "host_owners",
+    "largest_owner_share", "unified_land_control", "land_use_codes", "mkt_value_total", "land_value_per_acre",
+    "parcel_vintage", "parcel_source", "parcels_confidence", "run_id",
+]
+LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS}
 BATCH = 100
 
 
@@ -77,4 +83,4 @@ def run(names: list[str]) -> None:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    run(sorted(LAYER_COLUMNS))
+    run([n for n in sorted(LAYER_COLUMNS) if (g.LAYERS_DIR / f"{n}.parquet").exists()])

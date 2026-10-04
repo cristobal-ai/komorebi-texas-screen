@@ -9,3 +9,5 @@ Local cache. Everything here is gitignored **except** this file and `crosswalk_e
 `data/raw/ercot_cdr/manual/` — drop the latest ERCOT CDR workbook here (no stable URL; https://www.ercot.com/gridinfo/resource).
 
 Once the pipeline runs in GitHub Actions, the raw cache is also mirrored to Supabase Storage so a fresh clone does not need to re-download multi-GB SCED history.
+
+`data/raw/parcels/manual/` — drop the TxGIO StratMap Land Parcels files here (county zips or the statewide geodatabase; no stable URL, download from https://data.geographic.texas.gov). `data/raw/transmission/manual/` may hold a HIFLD transmission-line file or a `.osm.pbf` extract.

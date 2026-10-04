@@ -4,7 +4,7 @@
     python -m pipeline.run --phase 2 --county Pecos   # plant master + Pecos hand-check report
     python -m pipeline.run --phase 1-2 --county Pecos
     python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
-    python -m pipeline.run --phase 4 --layer transmission [--load]   # geo layers (see pipeline/phase_4_geo)
+    python -m pipeline.run --phase 4 --layer transmission|parcels [--load]   # geo layers (see pipeline/phase_4_geo)
     python -m pipeline.run --phase 3b                 # 3b: SCED + SPP history → curtailment, capture rate
     python -m pipeline.run --phase 3b --since 2026-07-15 --until 2026-07-15   # one-day probe
 """
@@ -76,9 +76,9 @@ def main(argv: list[str] | None = None) -> None:
                 load_supabase.run()
         elif n == 4:
             from pipeline.phase_4_geo import load as layer_load
-            from pipeline.phase_4_geo import transmission
+            from pipeline.phase_4_geo import parcels, transmission
 
-            layers = {"transmission": transmission.run}
+            layers = {"transmission": transmission.run, "parcels": parcels.run}
             names = sorted(layers) if args.layer == "all" else [args.layer]
             unknown = [x for x in names if x not in layers]
             if unknown:

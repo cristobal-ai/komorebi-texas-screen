@@ -14,6 +14,8 @@ from pipeline.common import DATA_DIR
 from pipeline.phase_4_geo.common import LAYERS_DIR
 
 SHOW = {
+    "parcels": ["parcel_status", "n_host_parcels", "parcel_acres_host", "acres_per_mw_parcel", "host_cover_share",
+                "headroom_pct_unified", "unified_land_control", "host_owners", "parcel_vintage", "parcels_confidence"],
     "transmission": ["grid_voltage_kv", "dist_345kv_sub_mi", "nearest_345kv_sub_name", "dist_345kv_line_mi",
                      "dist_138kv_line_mi", "kv_classes_within_near", "poi_kv_seen", "transmission_confidence"],
 }
