@@ -159,15 +159,23 @@ def read_neighborhood(sources, bbox_5070, cfg: dict) -> gpd.GeoDataFrame:
     return _combine([_read_source(p, l, cfg, bbox_5070=bbox_5070) for p, l in sources], cfg)
 
 
+def _no_spatial_index():
+    """A File Geodatabase whose spatial index (.spx) is stale or malformed answers every spatial filter with 0 rows in
+    milliseconds. Turn the index off: GDAL then scans every feature (minutes for the statewide file, but correct)."""
+    import pyogrio
+
+    pyogrio.set_gdal_config_options({"OPENFILEGDB_USE_SPATIAL_INDEX": "NO"})
+
+
 def read_mask(sources, mask_5070, cfg: dict) -> gpd.GeoDataFrame:
     """Parcels of every source intersecting a (multi)polygon, in ONE pass per source: for a statewide file this replaces one
-    full scan per plant."""
+    full scan per plant. An empty answer is retried once with the geodatabase spatial index disabled."""
     out = _combine([_read_source(p, l, cfg, mask_5070=mask_5070) for p, l in sources], cfg)
-    if out.empty and hasattr(mask_5070, "geoms"):
-        log.warning("mask read returned nothing; retrying box by box (%d boxes)", len(mask_5070.geoms))
-        out = _combine([_read_source(p, l, cfg, bbox_5070=b.bounds)
-                        for b in mask_5070.geoms for p, l in sources], cfg)
-        out = out.drop_duplicates(subset=["prop_id", "owner"]) if not out.empty and out["prop_id"].notna().any() else out
+    if out.empty:
+        log.warning("mask read returned nothing in milliseconds: retrying with the FileGDB spatial index off "
+                    "(a full scan; the statewide file takes several minutes)")
+        _no_spatial_index()
+        out = _combine([_read_source(p, l, cfg, mask_5070=mask_5070) for p, l in sources], cfg)
     return out
 
 
@@ -322,21 +330,32 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     ap = argparse.ArgumentParser(description="parcel files: --inspect lists layers, CRS, fields; --probe EIA_ID reads one plant")
     ap.add_argument("--inspect", action="store_true")
-    ap.add_argument("--probe", type=int, default=None, help="eia_id: read that plant's 3 km neighbourhood by box and by mask")
+    ap.add_argument("--probe", default=None, help="eia_id or part of the plant name: read its 3 km neighbourhood")
     a = ap.parse_args()
     folder = raw_dir(NAME) / "manual"
     if a.probe is not None:
         cfg = load_config()
         pl = g.load_plants()
-        pl = pl[pl["eia_id"] == a.probe].to_crs("EPSG:5070")
+        key = str(a.probe)
+        hit = pl["eia_id"].astype(str) == key
+        if not hit.any():
+            hit = pl["plant_name"].astype(str).str.contains(key, case=False, regex=False)
+        pl = pl[hit].head(1).to_crs("EPSG:5070")
         if pl.empty:
-            raise SystemExit(f"eia_id {a.probe} not in plants.parquet")
+            raise SystemExit(f"{a.probe} matches no plant in plants.parquet")
+        print("plant:", pl["plant_name"].iloc[0], pl["eia_id"].iloc[0])
         print("plant geometry bounds (EPSG:5070):", [round(x) for x in pl.geometry.iloc[0].bounds])
         area = box(*pl.geometry.iloc[0].buffer(cfg["layers"]["parcels"]["neighborhood_m"]).bounds)
         srcs = discover_sources(folder)
         print("sources:", len(srcs))
+        import pyogrio
+        for sp, sl in srcs:
+            head = pyogrio.read_dataframe(sp, layer=sl, max_features=3, columns=[])
+            print("first features bounds:", [[round(x) for x in b] for b in head.geometry.bounds.to_numpy()])
         print("box rows :", len(read_neighborhood(srcs, area.bounds, cfg)))
         print("mask rows:", len(read_mask(srcs, area, cfg)))
+        _no_spatial_index()
+        print("box rows, spatial index off:", len(read_neighborhood(srcs, area.bounds, cfg)))
         raise SystemExit(0)
     if not a.inspect:
         ap.error("give --inspect or --probe EIA_ID")
