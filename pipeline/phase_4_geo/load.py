@@ -26,7 +26,18 @@ PARCELS_COLUMNS = [
     "largest_owner_share", "unified_land_control", "land_use_codes", "mkt_value_total", "land_value_per_acre",
     "parcel_vintage", "parcel_source", "parcels_confidence", "run_id",
 ]
-LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS}
+GAS_PIPELINES_COLUMNS = [
+    "eia_id", "dist_gas_transmission_mi", "gas_transmission_operator", "gas_transmission_system",
+    "gas_transmission_diameter_in", "gas_transmission_interstate", "dist_gas_any_mi", "n_gas_transmission_near",
+    "max_gas_transmission_diameter_near_in", "gas_search_mi", "gas_source", "gas_fetched", "gas_confidence", "run_id",
+]
+FLOOD_COLUMNS = [
+    "eia_id", "flood_status", "nfhl_mapped_share", "sfha_share", "sfha_acres", "floodway_share", "x500_share",
+    "zone_d_share", "flood_zones", "flood_flag", "nfhl_study_ids", "flood_source", "flood_fetched", "flood_confidence",
+    "run_id",
+]
+LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
+                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS}
 BATCH = 100
 
 

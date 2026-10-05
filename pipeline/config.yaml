@@ -113,6 +113,35 @@ layers:
     near_miles: 3                # radius for kv_classes_within_near and the POI-voltage cross-check
     class_tolerance: 0.05        # a line of 138.0 kV matches an EIA POI of 138 kV within 5%
 
+  gas_pipelines:
+    # Texas RRC public viewer, layer 12 "QPipelines" (generalized lines, WGS84, 1000 features per page). Same endpoint
+    # MapsMaker uses (docs/RRC_PIPELINES_WELLS_SETUP.md there). Note the /server/rest/ path, not /arcgis/rest/.
+    # Display only: the brief lists gas proximity as a data source (bridge/backup generation), not a scored metric.
+    layer_url: https://gis.rrc.texas.gov/server/rest/services/rrc_public/RRC_Public_Viewer_Srvs/MapServer/12
+    status_in_service: In Service
+    commodities: [NATURAL GAS, NATURAL GAS FWS, NATURAL GAS OFFSHORE, OTHER GAS]
+    transmission_system_types: [Natural/Other Gas Transmission]   # SYSTEM_TYPE prefix; everything else is gathering/other
+    bbox_half_deg: 0.40          # query boxes centred on a snap-grid cell around each plant
+    bbox_snap_deg: 0.25
+    search_radius_mi: 15         # guaranteed coverage (box half-width minus snap offset, at 36 N); beyond it a distance is null
+    near_miles: 5                # radius for the count / largest diameter of gas transmission lines near a plant
+    pause_s: 0.5
+
+  flood:
+    # FEMA National Flood Hazard Layer MapServer: layer 28 Flood Hazard Zones (FLD_ZONE, ZONE_SUBTY, SFHA_TF) and layer 0
+    # NFHL Availability (digital FIRM study areas). Many rural Texas counties (Pecos, Milam) have no digital NFHL: those
+    # plants get flood_status not_mapped, never "no flood risk". MapsMaker draws layer 28 as raster tiles; here we query
+    # the polygons and clip them with the array.
+    service_url: https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer
+    zones_layer: 28
+    availability_layer: 0
+    availability_offset_deg: 0.0001   # study-area outlines are generalized to ~10 m by the server (they are whole counties)
+    # SFHA zones and 0.2% / Zone D polygons only; minimal-hazard Zone X polygons are large and not needed
+    where: "SFHA_TF = 'T' OR ZONE_SUBTY LIKE '0.2 PCT%' OR FLD_ZONE = 'D'"
+    flag_sfha_share: 0.10        # brief §3: "kill criterion if substantial footprint in Zone A/AE" — flagged, not auto-failed
+    point_buffer_m: 300          # plants with no USPVDB polygon: a buffer around the EIA point (confidence low)
+    pause_s: 0.5
+
   parcels:
     # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
     # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each
