@@ -20,6 +20,16 @@ def sql_columns() -> list[str]:
     return cols
 
 
+def test_metric_columns_match_migration():
+    sql = next(Path("supabase/migrations").glob("*_plant_metrics.sql")).read_text(encoding="utf-8")
+    added = re.findall(r"add column ([a-z_0-9]+)\s", sql)
+    assert added == ls.METRIC_COLUMNS
+    body = re.search(r"create table public\.plant_metrics_monthly \((.*?)\n\);", sql, re.S).group(1)
+    monthly = [m.group(1) for line in body.splitlines() if (m := re.match(r"\s*([a-z_0-9]+)\s", line.split("--")[0]))
+               and m.group(1) not in ("primary",)]
+    assert monthly == ls.MONTHLY_COLUMNS
+
+
 def test_loader_columns_match_migration():
     assert set(sql_columns()) - {"geom", "loaded_at"} == set(ls.PLANT_COLUMNS)
 
@@ -87,3 +97,57 @@ def test_load_fails_loudly_on_count_mismatch(plants):
 
 def test_legacy_jwt_gets_bearer():
     assert ls.headers("eyJhbGciOi...")["Authorization"].startswith("Bearer ")
+
+
+def test_metrics_merge_into_rows_only_when_present(plants):
+    import pandas as pd
+
+    plain = ls.to_rows(plants, "r1")
+    assert "capture_rate" not in plain[0]                         # no 3b file → columns not sent, nothing nulled
+    m = pd.DataFrame({"eia_id": [1], "resources": ["U1+U2"], "settlement_points": ["N1"], "capture_rate": [0.61],
+                      "metrics_window_months": [30], "window_start": ["2023-12"], "ercot_resource_shared": [False]})
+    rows = {r["eia_id"]: r for r in ls.to_rows(plants, "r1", m)}
+    assert rows[1]["capture_rate"] == 0.61 and rows[1]["ercot_resources"] == "U1+U2"
+    assert rows[1]["metrics_window_months"] == 30 and rows[1]["metrics_window_start"] == "2023-12"
+    assert rows[2]["capture_rate"] is None and rows[2]["metrics_status"] is None
+    import json
+    json.dumps(list(rows.values()))
+
+
+def test_monthly_rows_json_safe_and_filtered():
+    import json
+
+    import pandas as pd
+
+    mo = pd.DataFrame({c: [1.0, 1.0] for c in ls.MONTHLY_COLUMNS if c not in ("run_id",)})
+    mo["eia_id"], mo["month"], mo["n_units"], mo["days"] = [1, 9], "2026-07", [2, 1], [31, 31]
+    mo["capture_rate"] = [float("nan"), 0.5]
+    rows = ls.monthly_rows(mo, {1}, "r1")
+    assert len(rows) == 1 and rows[0]["capture_rate"] is None and rows[0]["n_units"] == 2 and rows[0]["gen_mwh"] == 1.0
+    json.dumps(rows)
+
+
+def test_send_retries_connection_resets_and_5xx(monkeypatch):
+    import requests
+
+    monkeypatch.setattr(ls.time, "sleep", lambda s: None)
+    calls = []
+
+    class Flaky:
+        def post(self, url, **kw):
+            calls.append(url)
+            if len(calls) == 1:
+                raise requests.exceptions.ConnectionError("reset")
+            if len(calls) == 2:
+                return FakeResp(ok=False, status=503)
+            return FakeResp()
+
+    r = ls._send(Flaky(), "post", "https://x/rest/v1/plants", json=[], timeout=1, headers={})
+    assert r.ok and len(calls) == 3
+
+    class Dead:
+        def post(self, url, **kw):
+            raise requests.exceptions.ConnectionError("down")
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        ls._send(Dead(), "post", "https://x/rest/v1/plants", retries=2, json=[], timeout=1, headers={})

@@ -1,7 +1,85 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { num, pct, text, yearMonth, yesNo, type Plant } from "@/lib/plants";
+import {
+  MONTHLY_COLUMNS,
+  fullMonths,
+  metricsStatusLabel,
+  num,
+  pct,
+  text,
+  yearMonth,
+  yesNo,
+  type MonthlyMetric,
+  type Plant,
+} from "@/lib/plants";
+import { SECTIONS, missingLabels, type Score } from "@/lib/scores";
+import MonthlyCharts from "./monthly-charts";
+
+type Layers = {
+  transmission: Record<string, string | number | boolean | null> | null;
+  parcels: Record<string, string | number | boolean | null> | null;
+  gas: Record<string, string | number | boolean | null> | null;
+  flood: Record<string, string | number | boolean | null> | null;
+};
+
+const n = (v: unknown) => (typeof v === "number" ? v : null);
+const t = (v: unknown) => (typeof v === "string" ? v : null);
+
+function ScoreSection({ s }: { s: Score }) {
+  return (
+    <section className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Score (brief §5, default weights)</h2>
+      <p className="mt-1 text-sm">
+        <span className="text-2xl font-semibold tabular-nums">{num(s.score_total)}</span>
+        <span className="ml-2 text-neutral-600 dark:text-neutral-400">
+          {s.rank_overall ? `rank ${s.rank_overall} overall · ${s.rank_in_tier} in tier` : "review plant: scored, not ranked"} · data{" "}
+          {pct(s.data_completeness, 0)}
+        </span>
+      </p>
+      <table className="mt-3 w-full text-sm">
+        <thead>
+          <tr className="text-left text-neutral-500">
+            <th scope="col" className="py-1 font-medium">Component</th>
+            <th scope="col" className="py-1 text-right font-medium">Points</th>
+            <th scope="col" className="py-1 text-right font-medium">Max</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SECTIONS.map((sec) => (
+            <Fragment key={sec.id}>
+              <tr className="border-t border-neutral-200 font-medium dark:border-neutral-800">
+                <td className="py-1">{sec.label}</td>
+                <td className="py-1 text-right tabular-nums">{num(s[`score_${sec.id}` as keyof Score] as number)}</td>
+                <td className="py-1 text-right tabular-nums">{sec.penalty ? `−${sec.max}` : sec.max}</td>
+              </tr>
+              {sec.components.map((c) => {
+                const missing = (s.missing_inputs ?? "").split(";").includes(String(c.key).replace(/^pts_/, ""));
+                return (
+                  <tr key={String(c.key)} className="text-neutral-600 dark:text-neutral-400">
+                    <td className="py-0.5 pl-4">
+                      {c.label}
+                      {missing && <span className="ml-2 text-xs text-neutral-500">not measured: neutral half points</span>}
+                    </td>
+                    <td className="py-0.5 text-right tabular-nums">{num(s[c.key] as number | null)}</td>
+                    <td className="py-0.5 text-right tabular-nums">{sec.penalty ? `−${c.max}` : c.max}</td>
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 text-xs text-neutral-500">
+        CF used {pct(s.cf_used)} ({text(s.cf_source)}) vs {text(s.region)} benchmark {pct(s.cf_benchmark)}. Fixed cost
+        ${num((s.fixed_cost_est_usd ?? 0) / 1e6, 1)}M → ${num(s.fixed_cost_per_kw_it, 0)}/kW firm IT
+        {s.fixed_cost_includes_fiber ? "" : " (fiber lateral not included yet: a floor)"}. Offtake {text(s.offtake_confidence)}.
+        {missingLabels(s.missing_inputs).length > 0 && ` Neutral inputs: ${missingLabels(s.missing_inputs).join("; ")}.`}
+      </p>
+    </section>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -37,12 +115,40 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   if (!data) notFound();
   const p = data as Plant;
 
+  const { data: monthlyData, error: monthlyError } = await supabase
+    .from("plant_metrics_monthly")
+    .select(MONTHLY_COLUMNS)
+    .eq("eia_id", eiaId)
+    .order("month", { ascending: true });
+  if (monthlyError) throw new Error(monthlyError.message);
+  const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
+  const months = fullMonths(allMonths);
+
+  const [scoreRes, trRes, pcRes, gasRes, flRes] = await Promise.all([
+    supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
+  ]);
+  const score = (scoreRes.data ?? null) as Score | null;
+  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data };
+
   const flags: string[] = [];
+  if (L.flood?.flood_flag)
+    flags.push(
+      `Flood: ${pct(n(L.flood.sfha_share), 0)} of the array (${num(n(L.flood.sfha_acres), 0)} acres) in FEMA 1% annual-chance zones (${text(t(L.flood.flood_zones))}); the brief’s kill criterion — shown, not scored`,
+    );
   if (p.sb6_review_required) flags.push(`SB6 co-location review: planned load ${num(p.planned_load_mw)} MW is at or above the large-load threshold`);
   if (p.tax_equity_consent_likely) flags.push("Tax-equity consent likely (COD ≥ 2019)");
   if (p.itc_recapture_open) flags.push("ITC recapture window may be open (COD within 5 years)");
   if (p.non_ercot_texas) flags.push(`Outside ERCOT balancing authority (${text(p.ba_code)})`);
   if (p.distribution_class_poi) flags.push("Distribution-class POI (at or below the config distribution-voltage limit)");
+  if (p.metrics_status !== "ok") flags.push(`Market metrics unavailable: ${metricsStatusLabel(p.metrics_status)}`);
+  if (p.peak_hsl_ratio_recent !== null && p.peak_hsl_ratio_recent < 0.75)
+    flags.push(
+      `Recent output ceiling is ${pct(p.peak_hsl_ratio_recent, 0)} of nameplate over the last 3 full months: possible derate or outage (a price signal, not a defect)`,
+    );
   if (p.filter_status === "review") flags.push(`Footprint unresolved: ${text(p.filter_reasons)}`);
 
   return (
@@ -65,6 +171,8 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ))}
         </ul>
       )}
+
+      {score && <ScoreSection s={score} />}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Section
@@ -119,6 +227,52 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
         <Section
+          title={`Market (SCED + real-time SPP${p.metrics_window_start ? `, ${p.metrics_window_start} to ${p.metrics_window_end}` : ""})`}
+          rows={[
+            ["Status", metricsStatusLabel(p.metrics_status), p.metrics_window_months ? `${p.metrics_window_months} full months` : undefined],
+            ["Capture rate (potential)", num(p.capture_rate_potential, 2), "HSL-weighted node price ÷ hub average; the scored measure"],
+            ["Capture rate (delivered)", num(p.capture_rate, 2), "flattered by curtailment"],
+            ["Shape × basis", `${num(p.shape_capture, 2)} × ${num(p.basis_ratio, 2)}`, "solar-hours discount × location discount (delivered)"],
+            ["Curtailment", pct(p.curtailment_pct), "share of available output dispatched down"],
+            ["Capacity factor", `${pct(p.sced_net_cf)} net · ${pct(p.sced_potential_cf)} potential`, `EIA-923 ${p.cf_year ?? ""}: ${pct(p.net_ac_cf)}`],
+            ["Peak HSL ÷ nameplate", `${num(p.peak_hsl_ratio, 2)} window · ${num(p.peak_hsl_ratio_recent, 2)} last 3 months`, "low = derated, part-built or out"],
+            ["ERCOT resource(s)", text(p.ercot_resources), p.ercot_resource_shared ? "unit shared with another EIA plant" : undefined],
+            ["Settlement point", text(p.ercot_settlement_points)],
+          ]}
+        />
+        <Section
+          title="Site (Phase 4 layers)"
+          rows={[
+            [
+              "345 kV substation",
+              L.transmission ? (n(L.transmission.dist_345kv_sub_mi) !== null ? `${num(n(L.transmission.dist_345kv_sub_mi))} mi` : `none within ${num(n(L.transmission.transmission_search_mi), 0)} mi`) : "—",
+              text(t(L.transmission?.nearest_345kv_sub_name)),
+            ],
+            ["Voltages within 3 mi", text(t(L.transmission?.kv_classes_within_near)), L.transmission ? `source: ${text(t(L.transmission.transmission_source))}` : undefined],
+            [
+              "Host parcels",
+              L.parcels ? `${num(n(L.parcels.parcel_acres_host), 0)} acres · ${num(n(L.parcels.acres_per_mw_parcel))} ac/MW` : "—",
+              L.parcels ? `status ${text(t(L.parcels.parcel_status))}; headroom ${pct(n(L.parcels.headroom_pct_unified), 0)} with same-owner land` : undefined,
+            ],
+            ["Land control", L.parcels ? yesNo(L.parcels.unified_land_control as boolean | null) : "—", text(t(L.parcels?.host_owners))],
+            [
+              "Gas transmission line",
+              L.gas ? (n(L.gas.dist_gas_transmission_mi) !== null ? `${num(n(L.gas.dist_gas_transmission_mi))} mi` : `none within ${num(n(L.gas.gas_search_mi), 0)} mi`) : "—",
+              L.gas && n(L.gas.dist_gas_transmission_mi) !== null
+                ? `${text(t(L.gas.gas_transmission_operator))} · ${num(n(L.gas.gas_transmission_diameter_in), 0)}″${L.gas.gas_transmission_interstate ? " · interstate" : ""}`
+                : undefined,
+            ],
+            ["Any gas line", L.gas ? (n(L.gas.dist_gas_any_mi) !== null ? `${num(n(L.gas.dist_gas_any_mi))} mi` : "—") : "—", "gathering included; RRC QPipelines (display only)"],
+            [
+              "FEMA flood zones",
+              !L.flood ? "—" : L.flood.flood_status === "not_mapped" ? "No digital flood map: unknown" : `${pct(n(L.flood.sfha_share), 1)} of array in SFHA`,
+              L.flood && L.flood.flood_status === "ok"
+                ? `zones ${text(t(L.flood.flood_zones))}; 0.2%: ${pct(n(L.flood.x500_share), 1)}; floodway ${pct(n(L.flood.floodway_share), 1)}`
+                : undefined,
+            ],
+          ]}
+        />
+        <Section
           title="Location & provenance"
           rows={[
             ["Latitude, longitude", p.lat !== null && p.lon !== null ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : "—"],
@@ -128,8 +282,11 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
       </div>
+      <MonthlyCharts rows={months} excluded={allMonths.length - months.length} />
       <p className="mt-6 text-xs text-neutral-500">
-        Not scored yet (Phases 3–5 add curtailment, capture rate, geo layers and the composite score).
+        Low capture rate, high curtailment and older modules are price signals and score higher; they are never filtered
+        out. Inputs whose layers are not built yet (soil λ, drillability, climate, water table, load pockets) and the
+        offtake status score half their points until measured.
       </p>
     </main>
   );

@@ -1,1 +1,110 @@
-eia_plant_id,eia_plant_name,ercot_resource_name,ercot_settlement_point,county,ac_mw_eia,ac_mw_ercot,cod_eia,match_method,match_confidence,verified_by,verified_on,notes
+eia_plant_id,eia_plant_name,ercot_resource_name,ercot_settlement_point,county,ac_mw_eia,ac_mw_ercot,cod_eia,match_method,match_confidence,verified_by,verified_on,notes,cdr_unit_name,cdr_year,name_score,mw_error_pct,sced_coverage,sced_max_hsl_mw
+62448,Lapetus,LAPETUS_UNIT_1,LAPETUS_U1,Andrews,100.0,100.7,2019-12-01,auto:name+county,high,CR,2026-10-02,,LAPETUS SOLAR,2020.0,100.0,0.7,True,99.8
+62755,Prospero Solar,PROSPERO_UNIT1,PROSPERO_ALL,Andrews,300.0,153.6,2020-06-01,auto:name+county,high,CR,2026-10-02,,PROSPERO SOLAR 1 U1,2020.0,100.0,1.2,True,152.6
+62755,Prospero Solar,PROSPERO_UNIT2,PROSPERO_ALL,Andrews,300.0,150.0,2020-06-01,auto:name+county,high,CR,2026-10-02,,PROSPERO SOLAR 1 U2,2020.0,100.0,1.2,True,149.1
+63255,2W Permian Solar Project Hybrid,EUNICE_PV1,EUNICE_ALL,Andrews,420.0,,2021-08-01,manual,high,CR,2026-10-02,manual match,,,,,,
+63255,2W Permian Solar Project Hybrid,EUNICE_PV2,EUNICE_ALL,Andrews,420.0,,2021-08-01,manual,high,CR,2026-10-02,manual match,,,,,,
+64325,Prospero Solar II,PRSPERO2_UNIT1,PRSPERO2_ALL,Andrews,250.0,126.5,2021-08-01,auto:name+county,high,CR,2026-10-02,,PROSPERO SOLAR 2 U1,2021.0,100.0,1.2,True,126.9
+64325,Prospero Solar II,PRSPERO2_UNIT2,PRSPERO2_ALL,Andrews,250.0,126.4,2021-08-01,auto:name+county,high,CR,2026-10-02,,PROSPERO SOLAR 2 U2,2021.0,100.0,1.2,True,127.2
+61867,Bovine,BOVINE2_BOVINE2,,Austin,10.0,5.0,2018-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,BOVINE SOLAR LLC,2018.0,100.0,0.0,False,
+61867,Bovine,BOVINE_BOVINE,,Austin,10.0,5.0,2018-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,BOVINE SOLAR LLC,2018.0,100.0,0.0,False,
+63223,Brightside,BRIGHTSD_UNIT1,BRIGHTSD_U1,Bee,50.7,53.4,2022-05-01,auto:name+county,high,CR,2026-10-02,,BRIGHTSIDE SOLAR,2022.0,100.0,5.3,True,43.0
+60774,Phantom Solar,,,Bell,15.4,,2017-04-01,manual,none,CR,2026-10-02,behind the meter - no ERCOT resource,,,,,,
+62845,ENGIE Long Draw Solar LLC,LGDRAW_S_UNIT1_1,LGDRAW_S_ALL,Borden,225.0,98.5,2020-12-01,auto:name+county,high,CR,2026-10-02,,LONG DRAW SOLAR U1,2021.0,85.7,0.8,True,100.5
+62845,ENGIE Long Draw Solar LLC,LGDRAW_S_UNIT1_2,LGDRAW_S_ALL,Borden,225.0,128.3,2020-12-01,auto:name+county,high,CR,2026-10-02,,LONG DRAW SOLAR U2,2021.0,85.7,0.8,True,124.4
+63328,Juno Solar Project,JUNO_UNIT1,JUNO_ALL,Borden,305.6,162.1,2021-06-01,auto:name+county,high,CR,2026-10-02,,JUNO SOLAR PHASE I,2021.0,100.0,0.0,True,162.1
+63328,Juno Solar Project,JUNO_UNIT2,JUNO_ALL,Borden,305.6,143.5,2021-06-01,auto:name+county,high,CR,2026-10-02,,JUNO SOLAR PHASE II,2021.0,100.0,0.0,True,143.5
+63273,Wagyu,WGU_UNIT1,WGU_RN,Brazoria,120.0,120.0,2020-08-01,auto:name+county,high,CR,2026-10-02,,WAGYU SOLAR,2021.0,100.0,0.0,True,111.2
+64447,Brazoria West,WES_UNIT1,WES_ALL,Brazoria,200.0,,2022-09-01,manual,high,CR,2026-10-02,manual match,,,,,,
+64447,Brazoria West,WES_UNIT2,WES_ALL,Brazoria,200.0,,2022-09-01,manual,high,CR,2026-10-02,manual match,,,,,,
+65521,"Longbow Solar, LLC",LON_SOLAR1,LON_RN1,Brazoria,78.1,78.2,2022-07-01,auto:name+county,high,CR,2026-10-02,,LONGBOW SOLAR,2024.0,100.0,0.1,True,70.2
+66046,Brazoria County Solar Project (Danciger),DAG_UNIT1,DAG_ALL,Brazoria,200.0,101.4,2022-07-01,auto:name+county,medium,CR,2026-10-02,,DANCIGER SOLAR U1,2023.0,84.2,1.4,True,94.9
+66046,Brazoria County Solar Project (Danciger),DAG_UNIT2,DAG_ALL,Brazoria,200.0,101.4,2022-07-01,auto:name+county,medium,CR,2026-10-02,,DANCIGER SOLAR U2,2023.0,84.2,1.4,True,74.7
+60989,SolaireHolman Solar Project,LASSO_UNIT1,LASSO_GEN,Brewster,50.0,50.0,2017-04-01,auto:name+county,high,CR,2026-10-02,,SOLAIREHOLMAN 1,2018.0,100.0,0.0,True,14.9
+64227,"Alexis Solar, LLC",ALEXIS_ALEXIS,,Brooks,10.0,10.0,2019-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,ALEXIS SOLAR,2019.0,100.0,0.0,False,
+65661,Nebula Solar,NEBULA_UNIT1,NEBULA_RN,Cameron,135.0,137.5,2022-06-01,auto:name+county,high,CR,2026-10-02,,NEBULA SOLAR (RAYOS DEL SOL) U1,2022.0,100.0,1.9,True,109.0
+65662,Vancourt Solar Interconnections,VANCOURT_UNIT1,VANCOURT_RN,Cameron,45.0,45.7,2022-09-01,auto:name+county,high,CR,2026-10-02,,VANCOURT SOLAR,2023.0,100.0,1.6,True,45.4
+62249,Misae Solar,MISAE_UNIT1,MISAE_GEN_RN,Childress,240.0,121.4,2020-01-01,auto:name+county,high,CR,2026-10-02,,MISAE SOLAR U1,2021.0,100.0,0.0,True,121.2
+62249,Misae Solar,MISAE_UNIT2,MISAE_GEN_RN,Childress,240.0,118.6,2020-01-01,auto:name+county,high,CR,2026-10-02,,MISAE SOLAR U2,2021.0,100.0,0.0,True,109.0
+61920,Galloway 1 Solar Farm,GALLOWAY_SOLAR1,GALO_RN1,Concho,250.0,250.0,2021-10-01,auto:name+county,high,CR,2026-10-02,,GALLOWAY 1 SOLAR,2021.0,100.0,0.0,True,186.8
+62773,"BT Cooke Solar, LLC",RIPPEY_UNIT1,RIPPEY_ALL,Cooke,59.0,59.8,2020-12-01,auto:mw+year+county,medium,CR,2026-10-02,,RIPPEY SOLAR,2020.0,14.3,1.4,True,52.5
+63519,Crane Solar Project,FWLR_SLR_UNIT1,FWLR_SLR_1,Crane,150.0,152.5,2020-07-01,auto:mw+year+county,medium,CR,2026-10-02,,FOWLER RANCH,2020.0,35.3,1.7,True,150.0
+63320,Titan Solar Project,TI_SOLAR_UNIT1,TI_SOLAR_ALL,Culberson,260.0,136.8,2021-12-01,auto:name+county,high,CR,2026-10-02,,TITAN SOLAR (IP TITAN) U1,2021.0,100.0,3.0,True,133.4
+63320,Titan Solar Project,TI_SOLAR_UNIT2,TI_SOLAR_ALL,Culberson,260.0,131.1,2021-12-01,auto:name+county,high,CR,2026-10-02,,TITAN SOLAR (IP TITAN) U2,2021.0,100.0,3.0,True,129.1
+63329,Aragorn Solar Project,ARAGORN_UNIT1,ARAGORN_RN,Culberson,187.2,188.2,2021-12-01,auto:name+county,high,CR,2026-10-02,,ARAGORN SOLAR,2021.0,100.0,0.5,True,173.9
+60372,Lamesa Solar,LMESASLR_UNIT1,LAMESASLR_G,Dawson,102.0,101.6,2017-04-01,auto:name+county,high,CR,2026-10-02,,BNB LAMESA SOLAR (PHASE I),2018.0,100.0,0.4,True,94.5
+61697,Lamesa II,LMESASLR_IVORY,LAMESASLR_G,Dawson,50.0,50.0,2018-11-01,auto:name+county,high,CR,2026-10-02,,BNB LAMESA SOLAR (PHASE II),2018.0,100.0,0.0,True,49.6
+65271,Noble Solar,NOBLESLR_SOLAR1,NOBLESLR_ALL,Denton,275.0,148.8,2022-09-01,auto:name+county,high,CR,2026-10-02,,NOBLE SOLAR U1,2022.0,100.0,1.5,True,129.8
+65271,Noble Solar,NOBLESLR_SOLAR2,NOBLESLR_ALL,Denton,275.0,130.2,2022-09-01,auto:name+county,high,CR,2026-10-02,,NOBLE SOLAR U2,2022.0,100.0,1.5,True,102.8
+65333,Shakes Solar,MCLNSLR_UNIT1,MCLNSLR_RN,Dimmit,200.0,207.4,2022-06-01,auto:name+county,high,CR,2026-10-02,,MCLEAN (SHAKES) SOLAR,2023.0,100.0,3.7,True,165.5
+62932,Oberon IB,OBERON_UNIT_1_J02,OBERON_U1,Ector,30.0,,2020-07-01,manual,high,CR,2026-10-03,SCED names J01/J02; peak HSL 117.6/27.7 MW vs EIA 150/30,,,,,,
+62933,Oberon IA,OBERON_UNIT_1_J01,OBERON_U1,Ector,150.0,,2020-07-01,manual,high,CR,2026-10-03,SCED names J01/J02; peak HSL 117.6/27.7 MW vs EIA 150/30,,,,,,
+63388,Oxy Renewable Energy - Goldsmith,,,Ector,16.8,,2020-05-01,manual,none,CR,2026-10-02,behind the meter - no ERCOT resource,,,,,,
+63764,Elm Branch Solar 1,STRATEGC_UNIT1,STRATEGC_RN,Ellis,134.7,135.0,2021-12-01,auto:mw+year+county,medium,CR,2026-10-02,,STRATEGIC SOLAR 1,2022.0,43.5,0.2,True,120.7
+61524,Whitewright Solar,WHTRT_WHTRGHT,,Fannin,10.0,10.0,2017-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,WHITEWRIGHT,2017.0,100.0,0.0,False,
+62505,G.S.E. One LLC,PHOENIX_UNIT1,PHOENIX_RN,Fannin,83.0,83.9,2021-09-01,auto:mw+year+county,medium,CR,2026-10-02,,PHOENIX SOLAR,2021.0,27.3,1.1,True,66.2
+62772,Coniglio Solar,CONIGLIO_UNIT1,CONIGLIO_RN,Fannin,123.6,125.7,2021-08-01,auto:name+county,high,CR,2026-10-02,,CONIGLIO SOLAR,2021.0,100.0,1.7,True,106.2
+61868,Bronson,BRNSN2_BRNSN2,,Fort Bend,10.0,5.0,2018-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,BRONSON SOLAR II,2018.0,100.0,0.0,False,
+61868,Bronson,BRNSN_BRNSN,,Fort Bend,10.0,5.0,2018-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,BRONSON SOLAR I,2018.0,100.0,0.0,False,
+62945,Fighting Jays Solar Project,JAY_UNIT1,JAY_RN_1,Fort Bend,227.5,,2022-06-01,manual,high,CR,2026-10-03,Both units operate since Dec 2023 (CDR year 2026 is stale); 279 MW peak vs 227.5 EIA; UNIT1 derated Apr-Nov 2024; SCED energy ~25% below EIA-923 - check,,,,,,
+62945,Fighting Jays Solar Project,JAY_UNIT2,JAY_RN_1,Fort Bend,227.5,,2022-06-01,manual,high,CR,2026-10-03,Both units operate since Dec 2023 (CDR year 2026 is stale); 279 MW peak vs 227.5 EIA; UNIT1 derated Apr-Nov 2024; SCED energy ~25% below EIA-923 - check,,,,,,
+66310,Cutlass Solar 1 LLC,ROW_UNIT1,ROW_ALL,Fort Bend,110.9,101.7,2022-12-01,auto:mw+year+county,medium,CR,2026-10-03,,ROWLAND SOLAR I,2023.0,44.4,8.3,True,94.1
+63211,Samson Solar Energy,SAMSON_1_G1,SAMSON_ALL,Franklin,250.0,128.42,2022-05-01,auto:name(no county match),low,CR,2026-10-03,,SAMSON SOLAR 1 U1,2021.0,100.0,2.7,True,60.2
+63211,Samson Solar Energy,SAMSON_1_G2,SAMSON_ALL,Franklin,250.0,128.42,2022-05-01,auto:name(no county match),low,CR,2026-10-03,,SAMSON SOLAR 1 U2,2021.0,100.0,2.7,True,73.0
+64204,Elara Solar,ELARA_SL_UNIT1,ERSL_RN,Frio,132.4,132.4,2021-12-01,auto:name+county,high,CR,2026-10-02,,ELARA SOLAR,2022.0,100.0,0.0,True,117.6
+59207,OCI Alamo 7 LLC,SOLARA_UNIT1,SOLARA_UNIT1,Haskell,100.0,112.0,2016-08-01,auto:name+county,medium,CR,2026-10-03,,OCI ALAMO 7 (PAINT CREEK),2016.0,100.0,12.0,True,100.8
+63905,Azure Sky Solar,AZURE_SOLAR1,AZURE_RN,Haskell,225.0,74.9,2021-07-01,auto:name+county,high,CR,2026-10-02,,AZURE SKY SOLAR U1,2021.0,100.0,1.5,True,71.3
+63905,Azure Sky Solar,AZURE_SOLAR2,AZURE_RN,Haskell,225.0,153.5,2021-07-01,auto:name+county,high,CR,2026-10-02,,AZURE SKY SOLAR U2,2021.0,100.0,1.5,True,152.0
+65303,Sun Valley Solar Project,SUNVASLR_UNIT1,SUNVASLR_ALL,Hill,250.0,165.75,2022-12-01,auto:name+county,high,CR,2026-10-02,,SUN VALLEY U1,2024.0,100.0,0.8,True,162.6
+65303,Sun Valley Solar Project,SUNVASLR_UNIT2,SUNVASLR_ALL,Hill,250.0,86.19,2022-12-01,auto:name+county,high,CR,2026-10-02,,SUN VALLEY U2,2024.0,100.0,0.8,True,86.2
+61532,Leon Solar,LEON_LEON,,Hunt,10.0,10.0,2017-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,LEON,2017.0,100.0,0.0,False,
+61871,Sterling Solar (TX),STRLING_STRLING,,Hunt,10.0,10.0,2018-11-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,STERLING,2018.0,100.0,0.0,False,
+64026,"ANSON Solar Center, LLC",ANSON1_UNIT1,ANSON1_ALL,Jones,200.0,100.8,2021-03-01,auto:name+county,high,CR,2026-10-02,,ANSON SOLAR U1,2022.0,100.0,0.8,True,100.0
+64026,"ANSON Solar Center, LLC",ANSON1_UNIT2,ANSON1_ALL,Jones,200.0,100.8,2021-03-01,auto:name+county,high,CR,2026-10-02,,ANSON SOLAR U2,2022.0,100.0,0.8,True,100.0
+64079,CatanSolar,CS10_CATAN,,Karnes,10.0,10.0,2020-12-01,auto:mw+year+county,medium,CR,2026-10-02,not in SCED PVGR list,CATAN SOLAR,2020.0,66.7,0.0,False,
+63892,Lily Solar Hybrid,LILY_SOLAR1,LILY_RN,Kaufman,146.7,147.6,2021-10-01,auto:name+county,high,CR,2026-10-02,,LILY SOLAR,2021.0,100.0,0.6,True,143.6
+61810,Chisum,CHISUM_CHISUM,,Lamar,10.0,10.0,2018-12-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,CHISUM SOLAR,2018.0,100.0,0.0,False,
+63222,Impact Solar 1,IMPACT_UNIT1,IMP_RN1,Lamar,198.5,198.5,2020-12-01,auto:name+county,high,CR,2026-10-02,,IMPACT SOLAR,2021.0,100.0,0.0,True,194.7
+63883,Samson Solar Energy III LLC,SAMSON_3_G1,SAMSON_ALL,Lamar,250.0,128.42,2022-11-01,auto:name+county,high,CR,2026-10-02,,SAMSON SOLAR 3 U1,2021.0,100.0,2.7,True,94.2
+63883,Samson Solar Energy III LLC,SAMSON_3_G2,SAMSON_ALL,Lamar,250.0,128.42,2022-11-01,auto:name+county,high,CR,2026-10-02,,SAMSON SOLAR 3 U2,2021.0,100.0,2.7,True,52.0
+61874,Eddy II,EDDYII_EDDYII,,McLennan,10.0,10.0,2018-11-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,EDDY SOLAR II,2018.0,100.0,0.0,False,
+63769,Briar Creek Solar 1,VISION_UNIT1,VISION_RN,Navarro,127.0,129.2,2021-12-01,auto:mw+year+county,medium,CR,2026-10-02,,VISION SOLAR 1,2022.0,28.6,1.7,True,114.4
+65631,"Pisgah Ridge Solar, LLC",PISGAH_SOLAR1,PISG_RN_ALL,Navarro,250.0,189.4,2022-12-01,auto:name+county,high,CR,2026-10-02,,PISGAH RIDGE SOLAR U1,2024.0,100.0,1.5,True,182.9
+65631,"Pisgah Ridge Solar, LLC",PISGAH_SOLAR2,PISG_RN_ALL,Navarro,250.0,64.4,2022-12-01,auto:name+county,high,CR,2026-10-02,,PISGAH RIDGE SOLAR U2,2024.0,100.0,1.5,True,63.5
+61962,Holstein 1 Solar Farm,HOLSTEIN_SOLAR1,HOLSTEIN_ALL,Nolan,200.0,102.2,2020-06-01,auto:name+county,high,CR,2026-10-02,,HOLSTEIN SOLAR 1,2020.0,100.0,2.2,True,102.2
+61962,Holstein 1 Solar Farm,HOLSTEIN_SOLAR2,HOLSTEIN_ALL,Nolan,200.0,102.3,2020-06-01,auto:name+county,high,CR,2026-10-02,,HOLSTEIN SOLAR 2,2020.0,90.0,2.2,True,99.5
+58710,Barilla Solar,HOVEY_UNIT1,HOVEY_GEN,Pecos,30.2,,2015-06-01,manual,high,CR,2026-10-03,30.1 MW vs 30.2; UNIT2 peaks 8.0 MW (CDR year 2026 is a re-registration),,,,,,
+58710,Barilla Solar,HOVEY_UNIT2,HOVEY_GEN,Pecos,30.2,,2015-06-01,manual,high,CR,2026-10-03,30.1 MW vs 30.2; UNIT2 peaks 8.0 MW (CDR year 2026 is a re-registration),,,,,,
+59206,Alamo 6,SIRIUS_UNIT1,SIRIUS_UNIT1,Pecos,105.0,110.2,2017-03-01,auto:name+county,high,CR,2026-10-02,,OCI ALAMO 6 (SIRIUS/WEST TEXAS),2016.0,100.0,5.0,True,78.5
+59994,RE Roserock,REROCK_UNIT1,REROCK_ALL,Pecos,160.0,78.75,2016-11-01,auto:name+county,high,CR,2026-10-02,,RE ROSEROCK SOLAR 1,2016.0,100.0,1.6,True,68.9
+59994,RE Roserock,REROCK_UNIT2,REROCK_ALL,Pecos,160.0,78.75,2016-11-01,auto:name+county,high,CR,2026-10-02,,RE ROSEROCK SOLAR 2,2016.0,100.0,1.6,True,70.5
+60044,Buckthorn Westex,RIGGINS_UNIT1,RIGGIN_UNIT1,Pecos,154.0,155.44,2018-05-01,auto:name+county,high,CR,2026-10-02,,RIGGINS (SE BUCKTHORN WESTEX SOLAR),2018.0,100.0,0.9,True,150.0
+60436,East Pecos Solar,BOOTLEG_UNIT1,BOOTLEG_UN1,Pecos,118.5,126.0,2017-04-01,auto:name+county,high,CR,2026-10-02,,FS EAST PECOS SOLAR,2017.0,100.0,6.3,True,103.8
+60682,Pearl Solar,SIRIUS_UNIT2,SIRIUS_UNIT1,Pecos,50.0,50.0,2017-10-01,auto:name+county,high,CR,2026-10-02,,BHE SOLAR PEARL PROJECT (SIRIUS 2),2017.0,100.0,0.0,True,39.4
+61346,RE Maplewood,REDBARN_UNIT_1,REDBARN_RN,Pecos,250.0,,2021-04-01,manual,high,CR,2026-10-03,Redbarn 1+2 = 250.0 MW,,,,,,
+61346,RE Maplewood,REDBARN_UNIT_2,REDBARN_RN,Pecos,250.0,,2021-04-01,manual,high,CR,2026-10-03,Redbarn 1+2 = 250.0 MW,,,,,,
+61368,Midway Solar - TX,WAYMARK_UNIT1,WAYMARK_RN,Pecos,182.0,,2018-12-01,manual,high,CR,2026-10-02,manual match,,,,,,
+62483,Taygete Energy Project LLC,TAYGETE_UNIT1,TAYGETE_ALL,Pecos,255.0,125.9,2021-03-01,auto:name+county,high,CR,2026-10-02,,TAYGETE SOLAR 1 U1,2021.0,100.0,0.1,True,104.8
+62483,Taygete Energy Project LLC,TAYGETE_UNIT2,TAYGETE_ALL,Pecos,255.0,128.9,2021-03-01,auto:name+county,high,CR,2026-10-02,,TAYGETE SOLAR 1 U2,2021.0,100.0,0.1,True,115.8
+62804,Greasewood Solar,GREASWOD_UNIT1,GREASWOD_ALL,Pecos,255.0,126.3,2021-02-01,auto:name+county,high,CR,2026-10-02,,GREASEWOOD SOLAR 1,2021.0,100.0,1.4,True,124.6
+62804,Greasewood Solar,GREASWOD_UNIT2,GREASWOD_ALL,Pecos,255.0,132.2,2021-02-01,auto:name+county,high,CR,2026-10-02,,GREASEWOOD SOLAR 2,2021.0,100.0,1.4,True,129.3
+62415,West of the Pecos Solar,W_PECOS_UNIT1,W_PECO_UNIT1,Reeves,100.0,100.0,2019-12-01,auto:name+county,high,CR,2026-10-02,,WEST OF PECOS SOLAR,2019.0,100.0,0.0,True,68.6
+60789,Bluebell Solar,CAPRIDG4_BB_PV,CAPRIDG4_CR4,Sterling,30.0,30.0,2018-11-01,auto:name+county,high,CR,2026-10-02,,BLUEBELL SOLAR (CAPRICORN RIDGE SOLAR),2019.0,100.0,0.0,True,30.0
+63351,Bluebell Solar II,CAPRIDG4_BB2_PV1,CAPRIDG4_CR4,Sterling,115.0,100.0,2020-12-01,auto:name+county,high,CR,2026-10-02,,BLUEBELL SOLAR II 1 (CAPRICORN RIDGE 4),2021.0,100.0,0.0,True,98.3
+63351,Bluebell Solar II,CAPRIDG4_BB2_PV2,CAPRIDG4_CR4,Sterling,115.0,15.0,2020-12-01,auto:name+county,high,CR,2026-10-02,,BLUEBELL SOLAR II 2 (CAPRICORN RIDGE 4),2021.0,100.0,0.0,True,15.0
+62141,Rambler,RAMBLER_UNIT1,RAMBLER_UNIT,Tom Green,200.0,211.19,2020-06-01,auto:name+county,high,CR,2026-10-02,,RAMBLER SOLAR,2020.0,100.0,5.6,True,112.1
+57659,East Blackland Solar Project 1,E_BLACK_UNIT_1,E_BLACK_RN,Travis,144.0,144.0,2021-07-01,auto:name+county,high,CR,2026-10-02,,EAST BLACKLAND SOLAR (PFLUGERVILLE SOLAR),2021.0,93.3,0.0,True,141.6
+60123,Castle Gap Solar Hybrid,CASL_GAP_UNIT1,CASL_GAP_UN1,Upton,180.0,180.0,2018-05-01,auto:name+county,high,CR,2026-10-02,,CASTLE GAP SOLAR,2018.0,100.0,0.0,True,142.5
+60581,Upton County Solar,SPTX12B_UNIT1,SPTX12B_RN,Upton,150.0,157.5,2017-12-01,auto:mw+year+county,medium,CR,2026-10-02,,SP-TX-12-PHASE B,2017.0,32.0,5.0,True,127.4
+62561,"Roadrunner, LLC Hybrid",QUEEN_SL_SOLAR1,QUEEN_SL_RN,Upton,400.0,,2019-11-01,manual,high,CR,2026-10-03,"Matched by Upton elimination, 400.4 MW peak vs 400, CDR year 2020; name differs (Queen Solar)",,,,,,
+62561,"Roadrunner, LLC Hybrid",QUEEN_SL_SOLAR2,QUEEN_SL_RN,Upton,400.0,,2019-11-01,manual,high,CR,2026-10-03,"Matched by Upton elimination, 400.4 MW peak vs 400, CDR year 2020; name differs (Queen Solar)",,,,,,
+62561,"Roadrunner, LLC Hybrid",QUEEN_SL_SOLAR3,QUEEN_SL_RN,Upton,400.0,,2019-11-01,manual,high,CR,2026-10-03,"Matched by Upton elimination, 400.4 MW peak vs 400, CDR year 2020; name differs (Queen Solar)",,,,,,
+62561,"Roadrunner, LLC Hybrid",QUEEN_SL_SOLAR4,QUEEN_SL_RN,Upton,400.0,,2019-11-01,manual,high,CR,2026-10-03,"Matched by Upton elimination, 400.4 MW peak vs 400, CDR year 2020; name differs (Queen Solar)",,,,,,
+59205,OCI Alamo 5 LLC,HELIOS_UNIT1,HELIOS_RN,Uvalde,100.0,100.0,2015-12-01,auto:name+county,high,CR,2026-10-02,,OCI ALAMO 5 (DOWNIE RANCH),2015.0,100.0,0.0,True,71.3
+62774,Kellam Solar,KELAM_SL_UNIT1,KELAMSL_U1,Van Zandt,59.0,59.8,2020-12-01,auto:name+county,high,CR,2026-10-02,,KELLAM SOLAR,2020.0,100.0,1.4,True,53.4
+63027,Mars Solar,MARS_MARS,,Webb,10.0,10.0,2019-08-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,MARS SOLAR (DG),2019.0,100.0,0.0,False,
+64538,Corazon Energy LLC,CORAZON_UNIT1,CORAZON_RN,Webb,200.0,202.6,2021-08-01,auto:name+county,high,CR,2026-10-02,,CORAZON SOLAR PHASE I,2021.0,100.0,1.3,True,156.6
+61875,Cascade Solar (TX),CASCADE,,Wharton,10.0,5.0,2019-04-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,CASCADE SOLAR I,2018.0,100.0,0.0,False,
+61875,Cascade Solar (TX),CASCADE2,,Wharton,10.0,5.0,2019-04-01,auto:name+county,high,CR,2026-10-02,not in SCED PVGR list,CASCADE SOLAR II,2018.0,100.0,0.0,False,
+61906,Phoebe Solar,PHOEBE_UNIT1,PHOEBE_ALL,Winkler,250.0,125.14,2019-11-01,auto:name+county,high,CR,2026-10-02,,PHOEBE SOLAR 1,2019.0,100.0,1.3,True,116.8
+61906,Phoebe Solar,PHOEBE_UNIT2,PHOEBE_ALL,Winkler,250.0,128.05,2019-11-01,auto:name+county,high,CR,2026-10-02,,PHOEBE SOLAR 2,2019.0,100.0,1.3,True,101.4

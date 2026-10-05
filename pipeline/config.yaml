@@ -26,8 +26,8 @@ hard_filters:
   # (Pecos passers 5.2–8.3 ac/MW on array area). Decision 30 Sep 2026: until TxGIO parcels land in Phase 4,
   # acreage on array area only flags (filter_status = review); it does not fail a plant.
   #   array_flag — acreage checks on USPVDB array area → review
-  #   parcel     — acreage checks on parcel area → fail (switch in Phase 4)
-  footprint_basis: array_flag
+  #   parcel     — acreage checks on TxGIO host-parcel area → fail, per plant where parcels were read; others stay array_flag
+  footprint_basis: parcel      # decision 5 Oct 2026; plants without usable parcels (parcel_status != ok, or low confidence) stay on array_flag
   technology: utility_pv       # exclude CSP, rooftop, community-solar aggregations
   ercot_only: true             # El Paso Electric and SPP-Panhandle plants are flagged, not dropped
   flag_only:
@@ -79,6 +79,90 @@ sources:                       # download locations; a file dropped in data/raw/
     # AM seen on Barilla Solar (58710) in f923_2025; treated as annual (conservative) until EIA docs say otherwise.
     frequency_map: {M: monthly, A: annual, AM: annual}
 
+  ercot:
+    # CDR (Capacity, Demand and Reserves) workbook — the one ERCOT file with unit code + county + MW + in-service
+    # year. No stable URL: download the latest from https://www.ercot.com/gridinfo/resource into
+    # data/raw/ercot_cdr/manual/. Sheets are scanned for a header row containing cdr_key_col.
+    cdr_key_col: UNIT CODE
+    cdr_solar_fuel_codes: [SOLAR, SOL, PV]   # rows whose fuel column contains any of these
+    # 60-day SCED disclosure: one day is enough to list every telemetered PV resource (Resource Type PVGR).
+    sced_days_back: 62           # disclosure lags 60 days; ask for a day just past the lag
+    sced_pv_resource_type: PVGR
+
+# Phase 4 geo layers. Each layer writes data/layers/<name>.parquet and Supabase table layers_<name>.
+layers:
+  transmission:
+    # Primary: OpenStreetMap power lines/substations (>= 100 kV) for Texas via Overpass. A HIFLD transmission-line
+    # file (data.gov / Data Rescue Project mirror) dropped in data/raw/transmission/manual/ replaces OSM for lines.
+    # Preferred source: the Geofabrik Texas extract (one ~700 MB file from a CDN; no overloaded API). Needs `pip install osmium`.
+    # If it cannot be downloaded or read, the Overpass boxes below are the fallback.
+    pbf_url: https://download.geofabrik.de/north-america/us/texas-latest.osm.pbf
+    use_pbf: true
+    overpass_urls:               # fallback; tried in order; the public servers are often overloaded (504)
+      - https://overpass-api.de/api/interpreter
+      - https://overpass.private.coffee/api/interpreter
+      - https://overpass.kumi.systems/api/interpreter
+      - https://maps.mail.ru/osm/tools/overpass/api/interpreter
+    overpass_timeout_s: 90       # per bounding-box query; fail fast and move to the next mirror (the statewide query timed out)
+    bbox_half_deg: 0.9           # query boxes of 1.8 x 1.8 degrees centred on a snap-grid cell around each plant (small = fast)
+    bbox_snap_deg: 0.25          # plants in the same grid cell share one box
+    search_radius_mi: 40         # guaranteed coverage around every plant (box half-width minus snap offset); scoring bands stop at 15 mi; a missing distance means 'none within this radius'
+    pause_s: 2
+    min_kv: 100                  # lines below this are not fetched
+    kv_classes: [138, 230, 345, 500]   # reported as the voltage classes seen near a plant
+    near_miles: 3                # radius for kv_classes_within_near and the POI-voltage cross-check
+    class_tolerance: 0.05        # a line of 138.0 kV matches an EIA POI of 138 kV within 5%
+
+  gas_pipelines:
+    # Texas RRC public viewer, layer 12 "QPipelines" (generalized lines, WGS84, 1000 features per page). Same endpoint
+    # MapsMaker uses (docs/RRC_PIPELINES_WELLS_SETUP.md there). Note the /server/rest/ path, not /arcgis/rest/.
+    # Display only: the brief lists gas proximity as a data source (bridge/backup generation), not a scored metric.
+    layer_url: https://gis.rrc.texas.gov/server/rest/services/rrc_public/RRC_Public_Viewer_Srvs/MapServer/12
+    status_in_service: In Service
+    commodities: [NATURAL GAS, NATURAL GAS FWS, NATURAL GAS OFFSHORE, OTHER GAS]
+    transmission_system_types: [Natural/Other Gas Transmission]   # SYSTEM_TYPE prefix; everything else is gathering/other
+    bbox_half_deg: 0.40          # query boxes centred on a snap-grid cell around each plant
+    bbox_snap_deg: 0.25
+    search_radius_mi: 15         # guaranteed coverage (box half-width minus snap offset, at 36 N); beyond it a distance is null
+    near_miles: 5                # radius for the count / largest diameter of gas transmission lines near a plant
+    pause_s: 0.5
+
+  flood:
+    # FEMA National Flood Hazard Layer MapServer: layer 28 Flood Hazard Zones (FLD_ZONE, ZONE_SUBTY, SFHA_TF) and layer 0
+    # NFHL Availability (digital FIRM study areas). Many rural Texas counties (Pecos, Milam) have no digital NFHL: those
+    # plants get flood_status not_mapped, never "no flood risk". MapsMaker draws layer 28 as raster tiles; here we query
+    # the polygons and clip them with the array.
+    service_url: https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer
+    zones_layer: 28
+    availability_layer: 0
+    availability_offset_deg: 0.0001   # study-area outlines are generalized to ~10 m by the server (they are whole counties)
+    # SFHA zones and 0.2% / Zone D polygons only; minimal-hazard Zone X polygons are large and not needed
+    where: "SFHA_TF = 'T' OR ZONE_SUBTY LIKE '0.2 PCT%' OR FLD_ZONE = 'D'"
+    flag_sfha_share: 0.10        # brief §3: "kill criterion if substantial footprint in Zone A/AE" — flagged, not auto-failed
+    point_buffer_m: 300          # plants with no USPVDB polygon: a buffer around the EIA point (confidence low)
+    pause_s: 0.5
+
+  parcels:
+    # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
+    # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each
+    # plant is read (bounding-box query) and cached under data/raw/parcels/selected/, so a big file can be deleted afterwards.
+    neighborhood_m: 3000         # parcels within this distance of the array are read (same-owner expansion is limited to it)
+    min_overlap_acres: 1.0       # a parcel is a "host" when the array overlaps it by >= this ...
+    min_overlap_frac: 0.02       # ... or by >= this share of the array (slivers from digitising are not hosts)
+    adjacency_tol_m: 2           # touching = within this distance
+    max_expansion_rounds: 6      # same-owner contiguous parcels are added breadth-first up to this many steps
+    unified_min_owner_share: 0.90  # unified land control: one owner holds >= this share of the host-parcel acres
+    point_buffer_m: 100          # plants with no USPVDB polygon: parcels within this distance of the EIA point (confidence low)
+    owner_stopwords: [llc, lp, llp, lllp, inc, corp, corporation, co, company, ltd, trust, tr, et, al, ux, vir, estate, of, the]
+    fields:                      # candidate column names (normalised) per attribute, first match wins
+      owner: [owner_name, ownername, owner, own_name, owner1]
+      prop_id: [prop_id, propid, geo_id, geoid, property_id]
+      land_use: [stat_land_use, state_cd, land_use, loc_land_use, landuse]
+      market_value: [mkt_value, market_value, market, total_value, appraised, tot_value]
+      land_value: [land_value, landvalue, land_val]
+      county: [county, county_name, cnty_name, countyname]
+      year: [tax_year, taxyear, year, data_year, source_year]
+
 units:
   m2_per_acre: 4046.8564224
 
@@ -96,19 +180,32 @@ sb6:
 
 scoring:
   max_total: 100
-  breakpoint_mode: fixed       # fixed | quantile  (switch to quantile after Phase 3b has run)
+  # quantile (decision 3 Oct 2026, plan §3 change 5): cut points are the fleet quartiles of the metric over plants with
+  # metrics_status = ok, computed at scoring time from plant_metrics. Fleet at the first 30-month run: capture_rate_potential
+  # q25/q50/q75 = 0.61/0.65/0.69 (range 0.33-0.84), curtailment_pct 4.6%/7.7%/15.0% (max 28.8%). The fixed bands would
+  # leave < 25% of plants in the 12-point bucket and < 25% in the 0-point bucket, so they discriminate less.
+  breakpoint_mode: quantile    # fixed | quantile
+  # Decisions 5 Oct 2026 (owner): (1) an input that is missing or whose layer is not built yet scores `missing_share` of
+  # its points (neutral) and counts against data_completeness; a measured "none within radius" is data, not missing.
+  # (2) flood_flag is shown and lowers nothing: flagged plants stay ranked. (3) offtake has no source yet: `unknown` points.
+  missing_share: 0.5
+  rank_statuses: [pass]        # review plants get scores but no rank
 
   A_acquisition_discount:      # 30 pts — lower performance scores higher
     capture_rate:              # points by capture-rate band (fraction of hub average)
+      metric: capture_rate_potential   # HSL-weighted: delivered-generation capture is flattered by curtailment
       max: 12
       fixed: [{lt: 0.55, pts: 12}, {lt: 0.65, pts: 8}, {lt: 0.75, pts: 4}, {else: 0}]
       quantile: {q25: 12, q50: 8, q75: 4, else: 0}
     curtailment_pct:
+      metric: curtailment_pct
       max: 8
       fixed: [{gt: 0.20, pts: 8}, {gt: 0.10, pts: 5}, {else: 2}]
       quantile: {q75: 8, q50: 5, else: 2}
     cf_vs_benchmark:           # capacity-factor points below regional benchmark
       max: 6
+      # CF = SCED net CF where metrics_status = ok, else EIA-923 net_ac_cf. Benchmark = benchmarks.regional_cf[region]
+      # when set, else the median CF of the scored plants in that region (computed at scoring time, written to the report).
       fixed: [{below_pts_gt: 4, pts: 6}, {below_pts_gt: 2, pts: 4}, {else: 1}]
     offtake_status:
       max: 4
@@ -129,8 +226,9 @@ scoring:
   C_physical_envelope:         # 20 pts
     acres_per_mw_ac:
       max: 8
-      # TODO Phase 4/5: these bands assume site footprint; rescale once parcel area replaces array area
-      bands: [{gt: 9, pts: 8}, {gt: 7, pts: 6}, {gt: 5, pts: 3}, {else: 0}]
+      # Rescaled 5 Oct 2026 to host-parcel acres per MW AC (acres_per_mw_parcel). 67 passing plants: q25 9.5, median 11.5,
+      # q75 16.1 (min 5.8). Cut points 14 / 10 / 7 sit near q62 / q30 / below q25, so every band is populated.
+      bands: [{gt: 14, pts: 8}, {gt: 10, pts: 6}, {gt: 7, pts: 3}, {else: 0}]
     expansion_headroom:        # (parcel acres − array acres) / array acres
       max: 7
       bands: [{gt: 0.50, pts: 7}, {gt: 0.20, pts: 4}, {else: 0}]
@@ -163,11 +261,32 @@ scoring:
       bands: [{gte: 200, pts: 2}, {gte: 100, pts: 1}, {else: 0}]
 
   F_fixed_cost_drag:           # penalty −15..0, on fixed_cost_per_kw_it
+    # fixed_cost_est = sum(assumptions.fixed_cost_defaults_usd) + fiber_lateral_miles × fiber_lateral_cost_per_mile_usd.
+    # Until the fiber layer exists the fiber term is left out (fixed_cost_includes_fiber = false), so F is a floor.
     bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
+
+crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rapidfuzz 0–100
+  name_high: 85                  # token-set similarity of normalized names
+  name_medium: 70
+  name_min: 55                   # below this a unit is not a candidate unless MW + year + county all agree
+  mw_tolerance_high: 0.10        # |Σ ERCOT MW − EIA AC MW| / EIA AC MW
+  mw_tolerance_medium: 0.25
+  year_tolerance: 1              # |CDR in-service year − EIA COD year|
+  # Unit-subset choice for multi-unit / sibling plants (Prospero vs Prospero II): minimise
+  #   |Σ unit MW − EIA MW| / EIA MW + phase_penalty × units whose phase number disagrees with the name
+  #                                  + year_penalty × units whose in-service year is outside the COD window
+  phase_penalty: 0.05            # a tiebreaker, not a veto: RE Maplewood 250 MW = Redbarn 1 (222) + Redbarn 2 (28)
+  year_penalty: 0.10
+  max_candidates: 10             # exhaustive subset search over at most this many units (2^10 combinations)
+  # words dropped before comparing names (EIA "Taygete Energy Project LLC" vs CDR "TAYGETE SOLAR")
+  stopwords: [solar, energy, project, projects, llc, lp, inc, farm, pv, power, plant, center, facility, the, park, station, generation, generating, texas, tx, hybrid]
 
 benchmarks:
   cf_plausible_range: [0.05, 0.40]   # net AC CF outside this gets cf_note = outside_plausible_range (not dropped)
-  regional_cf:                 # net AC capacity factor; fill from fleet medians in Phase 3
+  regions:                     # first match wins; a plant matching none is central_texas
+    west_texas: {lon_lt: -100.0}
+    coastal: {lat_lt: 30.0, lon_gt: -99.5}       # coast and south Texas (Houston, Brazoria, Cameron, Webb, Karnes)
+  regional_cf:                 # net AC capacity factor; null = fleet median of the region at scoring time
     west_texas: null
     central_texas: null
     coastal: null
@@ -178,6 +297,22 @@ benchmarks:
 market_window:
   months: 36
   api_history_floor: 2023-12-11    # ERCOT Public API — earlier data needs MIS archive backfill
+
+# Phase 3b — curtailment and capture rate from the 60-day SCED disclosure and 15-minute real-time SPP.
+#   curtailment_pct = Σ max(HSL − Base Point, 0)·Δt / Σ HSL·Δt          (per SCED interval, PVGR resources)
+#   capture_rate    = (Σ gen·SPP_node / Σ gen) / time-average SPP_hub   (hub = hub_reference, same intervals)
+#   shape_capture   = same with the hub price at the plant's generation hours  (solar-shape discount only)
+#   basis_ratio     = Σ gen·SPP_node / Σ gen·SPP_hub                      (location discount only; capture = shape × basis)
+market_metrics:
+  sced_lag_days: 62                # latest operating day = today − lag (disclosure posts 60 days late)
+  sced_interval_minutes_default: 5 # used for the last interval of a day and any gap-less resource
+  max_interval_minutes: 15         # a longer gap between SCED runs is treated as a gap, not curtailment
+  hub_reference: HB_HUBAVG
+  price_locations_extra: [HB_NORTH, HB_SOUTH, HB_WEST, HB_HOUSTON, HB_BUSAVG]
+  min_month_coverage: 0.90         # share of a month's days with SCED data for the month to enter the summary
+  min_gen_mwh_for_capture: 100     # below this a plant gets no capture_rate (price-weighting on nothing)
+  throttle_seconds: 1.0            # pause between ERCOT API calls
+  retries: 3
 
 caveat_flags:                  # displayed on every dossier; never scored
   - load_import_not_screenable
