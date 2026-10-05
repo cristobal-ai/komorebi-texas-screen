@@ -25,6 +25,7 @@ type Layers = {
   fiber: Record<string, string | number | boolean | null> | null;
   climate: Record<string, string | number | boolean | null> | null;
   wells: Record<string, string | number | boolean | null> | null;
+  soils: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -127,7 +128,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes, soRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
@@ -136,6 +137,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_wells").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_soils").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
   const L: Layers = {
@@ -146,14 +148,20 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     fiber: fbRes.data,
     climate: clRes.data,
     wells: wlRes.data,
+    soils: soRes.data,
   };
   const C = L.climate;
   const W = L.wells;
+  const S = L.soils;
 
   const flags: string[] = [];
   if (L.flood?.flood_flag)
     flags.push(
       `Flood: ${pct(n(L.flood.sfha_share), 0)} of the array (${num(n(L.flood.sfha_acres), 0)} acres) in FEMA 1% annual-chance zones (${text(t(L.flood.flood_zones))}); the brief’s kill criterion — shown, not scored`,
+    );
+  if (score?.thermal_response_test_required)
+    flags.push(
+      `Soil thermal conductivity estimate ${num(n(S?.soil_lambda_w_mk), 2)} W/m·K is below 1.0: a thermal response test is required before sizing the loop field`,
     );
   if (p.sb6_review_required) flags.push(`SB6 co-location review: planned load ${num(p.planned_load_mw)} MW is at or above the large-load threshold`);
   if (p.tax_equity_consent_likely) flags.push("Tax-equity consent likely (COD ≥ 2019)");
@@ -329,8 +337,29 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
         <Section
-          title="Ground & water (TWDB well records)"
+          title="Ground & water (SSURGO soils, TWDB well records)"
           rows={[
+            [
+              "Soil thermal conductivity λ",
+              S && n(S.soil_lambda_w_mk) !== null ? `${num(n(S.soil_lambda_w_mk), 2)} W/m·K` : S ? "no soil data" : "—",
+              S && n(S.soil_lambda_w_mk) !== null
+                ? `at field capacity, top 2 m (scored); dry ${num(n(S.soil_lambda_dry_w_mk), 2)} · saturated ${num(n(S.soil_lambda_sat_w_mk), 2)}; estimate (Côté & Konrad), a thermal response test decides`
+                : undefined,
+            ],
+            [
+              "Soil",
+              S ? text(t(S.dominant_soil)) : "—",
+              S && n(S.soil_sand_pct) !== null
+                ? `sand ${num(n(S.soil_sand_pct), 0)}% · clay ${num(n(S.soil_clay_pct), 0)}% · ${num(n(S.soil_bulk_density), 2)} g/cm³; ${text(t(S.dominant_mapunit))}`
+                : undefined,
+            ],
+            [
+              "Restrictive layers (top 2 m)",
+              S ? (t(S.restriction_kinds) ? `${text(t(S.restriction_kinds))}` : "none mapped") : "—",
+              S && t(S.restriction_kinds)
+                ? `${pct(n(S.restriction_share), 0)} of the array; shallowest ${num(n(S.restriction_min_depth_cm), 0)} cm (petrocalcic = caliche hardpan)`
+                : undefined,
+            ],
             [
               "Thick caliche / gypsum",
               W && n(W.thick_hard_layer_share) !== null ? `${pct(n(W.thick_hard_layer_share), 0)} of driller logs` : "—",

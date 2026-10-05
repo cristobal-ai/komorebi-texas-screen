@@ -201,6 +201,28 @@ layers:
       hard_rock: 'LIME ?STONE|LIME ?ROCK|DOLOM|GRANITE|BASALT|QUARTZITE|HARD ROCK'   # display only: rotary/DTH drills these
       lost_circulation: 'LOST CIRC|NO RETURN|LOST RETURN|CAVERN|CAVITY|VOID'           # display only: karst / grout loss risk
 
+  soils:
+    # USDA NRCS SSURGO through Soil Data Access (T-SQL over HTTP, no key). Lambda from texture, bulk density and
+    # field-capacity water content with Cote & Konrad (2005). Near-surface (0-2 m) only: a screen, not a TRT.
+    sda_url: https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest
+    simplify_deg: 0.0003           # ~30 m: keeps big array polygons to a few thousand WKT characters
+    depth_cm: 200                  # horizons weighted over 0 - this depth (SSURGO rarely describes deeper)
+    point_buffer_m: 300            # plants with no USPVDB polygon: buffer around the EIA point (confidence low)
+    min_data_share_medium: 0.80    # share of the array with horizon data needed for confidence medium
+    pause_s: 0.3
+    retries: 4
+    model:                         # Cote & Konrad (2005); Johansen (1975) solids
+      particle_density: 2.65       # g/cm3
+      lambda_quartz: 7.7           # W/m-K
+      lambda_other_minerals: 2.0   # when quartz (~ sand) share > 0.2
+      lambda_other_minerals_low_quartz: 3.0
+      lambda_water: 0.6
+      chi: 0.75                    # dry natural mineral soil: lambda_dry = chi * 10^(-eta * n)
+      eta: 1.2
+      kappa_sand: 3.55             # medium / fine sands
+      kappa_fine: 1.9              # silty and clayey soils
+      sand_kappa_min_pct: 50       # sand % at or above which kappa_sand applies
+
   parcels:
     # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
     # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each

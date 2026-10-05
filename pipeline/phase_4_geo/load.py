@@ -56,9 +56,15 @@ WELLS_COLUMNS = [
     "depth_to_water_ft_p75", "water_level_sources", "latest_water_level_year", "aquifer_majority", "gcd_majority",
     "wells_source", "wells_fetched", "wells_confidence", "run_id",
 ]
+SOILS_COLUMNS = [
+    "eia_id", "soil_status", "soil_lambda_w_mk", "soil_lambda_dry_w_mk", "soil_lambda_sat_w_mk", "soil_sand_pct",
+    "soil_clay_pct", "soil_bulk_density", "soil_theta_fc", "dominant_soil", "dominant_mapunit", "n_mapunits",
+    "soil_data_share", "restriction_kinds", "restriction_min_depth_cm", "restriction_share", "bedrock_depth_cm_min",
+    "soil_source", "soil_fetched", "soil_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
                  "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
-                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS}
+                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS, "soils": SOILS_COLUMNS}
 BATCH = 100
 
 

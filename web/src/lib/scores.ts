@@ -11,6 +11,7 @@ export type Score = {
   score_d: number;
   score_e: number;
   score_f: number;
+  thermal_response_test_required?: boolean | null;
   pts_capture: number | null;
   pts_curtailment: number | null;
   pts_cf_benchmark: number | null;

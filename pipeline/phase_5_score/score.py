@@ -22,7 +22,7 @@ import pandas as pd
 from pipeline.common import DATA_DIR, load_config
 
 log = logging.getLogger(__name__)
-LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells")
+LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils")
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -195,18 +195,19 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
         .where(has_tx, np.nan), D["distance_to_345kv_sub_mi"]["max"])
     put("load_pocket", pd.Series(np.nan, index=df.index), D["load_pocket_proximity"]["max"], "not_built")
 
-    # E — thermal & cooling: climate (NSRDB) and wells (TWDB) layers; soils not built yet -------------------------------
+    # E — thermal & cooling: soils (SSURGO), climate (NSRDB) and wells (TWDB) layers ------------------------------------
     # a layer present but no value for a plant (e.g. < min_logs driller logs within 10 mi) = no data: neutral
     E = s["E_thermal_cooling"]
-    for comp, key, col in (("hours25", "hours_below_25c_drybulb", "hours_below_25c_drybulb"),
+    for comp, key, col in (("lambda", "soil_lambda_w_mk", "soil_lambda_w_mk"),
+                           ("hours25", "hours_below_25c_drybulb", "hours_below_25c_drybulb"),
                            ("drill", "drillability", E["drillability"]["metric"]),
                            ("water", "depth_to_water_ft", "depth_to_water_ft")):
         if col in df.columns:
             put(comp, df[col].map(lambda v, b=E[key]["bands"]: band(v, b)), E[key]["max"])
         else:
             put(comp, pd.Series(np.nan, index=df.index), E[key]["max"], "not_built")
-    put("lambda", pd.Series(np.nan, index=df.index), E["soil_lambda_w_mk"]["max"], "not_built")
-    out["thermal_response_test_required"] = None          # set once the SSURGO λ layer exists (λ < 1.0 W/m·K)
+    lam = df.get("soil_lambda_w_mk", pd.Series(np.nan, index=df.index))
+    out["thermal_response_test_required"] = (lam < E["soil_lambda_w_mk"]["thermal_response_test_flag_below"]).where(lam.notna())
 
     # F — fixed-cost drag (penalty; not part of completeness) ----------------------------------------------------------
     fixed = float(sum(a["fixed_cost_defaults_usd"].values()))
