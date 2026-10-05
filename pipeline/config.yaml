@@ -26,8 +26,8 @@ hard_filters:
   # (Pecos passers 5.2–8.3 ac/MW on array area). Decision 30 Sep 2026: until TxGIO parcels land in Phase 4,
   # acreage on array area only flags (filter_status = review); it does not fail a plant.
   #   array_flag — acreage checks on USPVDB array area → review
-  #   parcel     — acreage checks on parcel area → fail (switch in Phase 4)
-  footprint_basis: array_flag
+  #   parcel     — acreage checks on TxGIO host-parcel area → fail, per plant where parcels were read; others stay array_flag
+  footprint_basis: parcel      # decision 5 Oct 2026; plants without usable parcels (parcel_status != ok, or low confidence) stay on array_flag
   technology: utility_pv       # exclude CSP, rooftop, community-solar aggregations
   ercot_only: true             # El Paso Electric and SPP-Panhandle plants are flagged, not dropped
   flag_only:
@@ -190,8 +190,9 @@ scoring:
   C_physical_envelope:         # 20 pts
     acres_per_mw_ac:
       max: 8
-      # TODO Phase 4/5: these bands assume site footprint; rescale once parcel area replaces array area
-      bands: [{gt: 9, pts: 8}, {gt: 7, pts: 6}, {gt: 5, pts: 3}, {else: 0}]
+      # Rescaled 5 Oct 2026 to host-parcel acres per MW AC (acres_per_mw_parcel). 67 passing plants: q25 9.5, median 11.5,
+      # q75 16.1 (min 5.8). Cut points 14 / 10 / 7 sit near q62 / q30 / below q25, so every band is populated.
+      bands: [{gt: 14, pts: 8}, {gt: 10, pts: 6}, {gt: 7, pts: 3}, {else: 0}]
     expansion_headroom:        # (parcel acres − array acres) / array acres
       max: 7
       bands: [{gt: 0.50, pts: 7}, {gt: 0.20, pts: 4}, {else: 0}]

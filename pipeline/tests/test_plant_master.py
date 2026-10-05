@@ -100,7 +100,22 @@ def test_parcel_basis_fails_on_acreage(generators, polygons, cfg, as_of):
     parcel = {**cfg, "hard_filters": {**cfg["hard_filters"], "footprint_basis": "parcel"}}
     plants, _ = build(generators, polygons, parcel, as_of)
     p = plants.set_index("eia_id").loc[5]
-    assert p.filter_status == "fail" and p.filter_reasons == "acres_per_mw<5"
+    assert p.filter_status == "review" and p.filter_reasons == "array_acres_per_mw<5"   # no parcel layer: stays an array flag
+
+
+def test_parcel_basis_uses_parcels_where_read(generators, polygons, cfg, as_of):
+    parcel = {**cfg, "hard_filters": {**cfg["hard_filters"], "footprint_basis": "parcel"}}
+    ids = [int(i) for i in build(generators, polygons, parcel, as_of)[0]["eia_id"]]
+    def layer(status, apm, conf="high"):
+        return pd.DataFrame({"eia_id": ids, "parcel_status": status, "parcel_acres_host": 900.0, "acres_per_mw_parcel": apm,
+                             "parcels_confidence": conf})
+    p = build(generators, polygons, parcel, as_of, parcels=layer("ok", 3.0))[0].set_index("eia_id").loc[5]
+    assert p.filter_status == "fail" and p.filter_reasons == "acres_per_mw<5" and p.footprint_basis == "parcel"
+    p = build(generators, polygons, parcel, as_of, parcels=layer("ok", 8.0))[0].set_index("eia_id").loc[5]
+    assert p.filter_status == "pass" and p.footprint_basis == "parcel"          # parcel area rescues an array-flag plant
+    for status, conf in (("no_parcel_overlap", "high"), ("ok", "low")):
+        p = build(generators, polygons, parcel, as_of, parcels=layer(status, 8.0, conf))[0].set_index("eia_id").loc[5]
+        assert p.filter_status == "review" and p.footprint_basis == "array_flag"
 
 
 def test_cod_caveat_flags(built):

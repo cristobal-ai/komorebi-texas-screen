@@ -7,7 +7,7 @@ footprint on parcel area); only `pass` plants are ranked.
 filter_status:
   pass    — every hard filter evaluated and passed
   review  — no hard filter failed, but the footprint is unresolved: no USPVDB polygon for the eia_id, or
-            (footprint_basis = array_flag) array acreage is below the site-footprint thresholds
+            array acreage is below the site-footprint thresholds for a plant whose parcels are not resolved
   fail    — at least one hard filter failed (reasons listed)
 
 Poor performance is a price signal, not a defect: nothing here filters on output, age of modules or curtailment.
@@ -192,16 +192,24 @@ def apply_filters(df: pd.DataFrame, cfg: dict, as_of: dt.date) -> pd.DataFrame:
     add(hard, df["cod_first"] < cod_from, f"cod<{cod_from.date()}")
     add(hard, df["cod_first"] > cod_to, f"cod>{cod_to.date()}")
 
-    # Filter 4 — footprint. Array area understates the site, so it only flags until parcels exist.
+    # Filter 4 — footprint. Array area understates the site, so on its own it only flags (review). With
+    # footprint_basis = parcel, a plant whose TxGIO host parcels were read (parcel_status ok, confidence not low) is judged on
+    # parcel area (fail); every other plant keeps the array flag until its parcels are resolved.
     basis = hf["footprint_basis"]
     if basis not in ("array_flag", "parcel"):
         raise ValueError(f"hard_filters.footprint_basis must be array_flag or parcel, got {basis!r}")
-    fp = soft if basis == "array_flag" else hard
-    prefix = "array_" if basis == "array_flag" else ""
-    add(fp, df["array_acres"] < hf["min_acres"], f"{prefix}acres<{hf['min_acres']}")
-    add(fp, df["acres_per_mw_ac"] < hf["min_acres_per_mw_ac"], f"{prefix}acres_per_mw<{hf['min_acres_per_mw_ac']}")
-    add(soft, df["array_acres"].isna(), "no_uspvdb_polygon")
-    df["footprint_basis"] = basis
+    if basis == "parcel" and "parcel_status" in df:
+        on_parcel = (df["parcel_status"] == "ok") & (df["parcels_confidence"] != "low")
+    else:
+        on_parcel = pd.Series(False, index=df.index)
+    p_acres = df["parcel_acres_host"] if "parcel_acres_host" in df else pd.Series(np.nan, index=df.index)
+    p_apm = df["acres_per_mw_parcel"] if "acres_per_mw_parcel" in df else pd.Series(np.nan, index=df.index)
+    add(hard, on_parcel & (p_acres < hf["min_acres"]), f"acres<{hf['min_acres']}")
+    add(hard, on_parcel & (p_apm < hf["min_acres_per_mw_ac"]), f"acres_per_mw<{hf['min_acres_per_mw_ac']}")
+    add(soft, ~on_parcel & (df["array_acres"] < hf["min_acres"]), f"array_acres<{hf['min_acres']}")
+    add(soft, ~on_parcel & (df["acres_per_mw_ac"] < hf["min_acres_per_mw_ac"]), f"array_acres_per_mw<{hf['min_acres_per_mw_ac']}")
+    add(soft, df["array_acres"].isna() & ~on_parcel, "no_uspvdb_polygon")
+    df["footprint_basis"] = np.where(on_parcel, "parcel", "array_flag")
 
     # Filter 3 — flag, do not drop (brief §2.3, plan §3.1)
     df["non_ercot_texas"] = df["ba_code"].fillna("") != cfg["sources"]["eia860m"]["ercot_ba_code"]
@@ -231,14 +239,19 @@ def apply_filters(df: pd.DataFrame, cfg: dict, as_of: dt.date) -> pd.DataFrame:
 
 
 def build(gen: pd.DataFrame, poly: gpd.GeoDataFrame, cfg: dict | None = None, as_of: dt.date | None = None,
-          eia860: tuple[pd.DataFrame, pd.DataFrame] | None = None, gen923: pd.DataFrame | None = None):
-    """eia860 = (plant file, 3_3 solar file); gen923 = EIA-923 page 1. Either may be None (columns stay null)."""
+          eia860: tuple[pd.DataFrame, pd.DataFrame] | None = None, gen923: pd.DataFrame | None = None,
+          parcels: pd.DataFrame | None = None):
+    """eia860 = (plant file, 3_3 solar file); gen923 = EIA-923 page 1; parcels = the Phase 4 parcel layer (used only when
+    footprint_basis = parcel). Any may be None (columns stay null)."""
     cfg = cfg or load_config()
     as_of = as_of or dt.date.today()
     eia = eia_plants(gen, cfg)
     usp = uspvdb_plants(poly, cfg)
     merged = eia.merge(usp, on="eia_id", how="left", indicator=True)
     merged["uspvdb_match"] = merged.pop("_merge") == "both"
+    if parcels is not None:
+        merged = merged.merge(parcels[["eia_id", "parcel_status", "parcel_acres_host", "acres_per_mw_parcel", "parcels_confidence"]],
+                              on="eia_id", how="left")
     df = apply_filters(merged, cfg, as_of)
     if eia860 is not None:
         df = df.merge(eia860_attrs(*eia860, cfg), on="eia_id", how="left")
@@ -261,7 +274,11 @@ def run(as_of: dt.date | None = None) -> Path:
         log.warning("no EIA-860 annual parquet — grid voltage / tracking / module columns will be empty (run phase 1)")
     if gen923 is None:
         log.warning("no EIA-923 parquet — capacity factor columns will be empty (run phase 1)")
-    plants, orphans = build(gen, poly, as_of=as_of, eia860=eia860, gen923=gen923)
+    lp = DATA_DIR / "layers" / "parcels.parquet"
+    parcels = pd.read_parquet(lp) if lp.exists() else None
+    if parcels is None:
+        log.warning("no data/layers/parcels.parquet — footprint stays on the array flag (run phase 4 --layer parcels)")
+    plants, orphans = build(gen, poly, as_of=as_of, eia860=eia860, gen923=gen923, parcels=parcels)
     plants.to_parquet(OUT_PATH)
     orphans.to_parquet(DATA_DIR / "uspvdb_orphans_tx.parquet")
     counts = plants["filter_status"].value_counts().to_dict()
