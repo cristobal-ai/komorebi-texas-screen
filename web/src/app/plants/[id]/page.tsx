@@ -24,6 +24,7 @@ type Layers = {
   flood: Record<string, string | number | boolean | null> | null;
   fiber: Record<string, string | number | boolean | null> | null;
   climate: Record<string, string | number | boolean | null> | null;
+  wells: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -126,7 +127,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
@@ -134,6 +135,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_wells").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
   const L: Layers = {
@@ -143,8 +145,10 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     flood: flRes.data,
     fiber: fbRes.data,
     climate: clRes.data,
+    wells: wlRes.data,
   };
   const C = L.climate;
+  const W = L.wells;
 
   const flags: string[] = [];
   if (L.flood?.flood_flag)
@@ -322,6 +326,40 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
               C ? `${num(n(C.nsrdb_lat), 2)}, ${num(n(C.nsrdb_lon), 2)} · ${num(n(C.nsrdb_elevation_m), 0)} m` : "—",
               C ? `confidence ${text(t(C.climate_confidence))} (modelled MERRA-2 temperature, ~4 km cell)` : undefined,
             ],
+          ]}
+        />
+        <Section
+          title="Ground & water (TWDB well records)"
+          rows={[
+            [
+              "Thick caliche / gypsum",
+              W && n(W.thick_hard_layer_share) !== null ? `${pct(n(W.thick_hard_layer_share), 0)} of driller logs` : "—",
+              W
+                ? n(W.logs_radius_mi) !== null
+                  ? `≥ 20 ft in the top 500 ft (scored); ${num(n(W.n_logs), 0)} logs within ${num(n(W.logs_radius_mi), 0)} mi, median depth ${num(n(W.median_log_depth_ft), 0)} ft`
+                  : `only ${num(n(W.n_logs), 0)} logs within 10 mi: no data, scored neutral`
+                : undefined,
+            ],
+            [
+              "Any caliche / any gypsum",
+              W && n(W.caliche_log_share) !== null ? `${pct(n(W.caliche_log_share), 0)} / ${pct(n(W.gypsum_log_share), 0)} of logs` : "—",
+              W && n(W.hard_layer_ft_median) !== null ? `median ${num(n(W.hard_layer_ft_median), 0)} ft, 90th pct ${num(n(W.hard_layer_ft_p90), 0)} ft per log` : undefined,
+            ],
+            [
+              "Hard rock · lost circulation",
+              W && n(W.hard_rock_log_share) !== null ? `${pct(n(W.hard_rock_log_share), 0)} · ${pct(n(W.lost_circulation_log_share), 0)} of logs` : "—",
+              "≥ 20 ft limestone/dolomite/igneous · lost returns or cavities (display only)",
+            ],
+            [
+              "Depth to water",
+              W && n(W.depth_to_water_ft) !== null ? `${num(n(W.depth_to_water_ft), 0)} ft` : "—",
+              W && n(W.depth_to_water_ft) !== null
+                ? `median (scored); IQR ${num(n(W.depth_to_water_ft_p25), 0)}–${num(n(W.depth_to_water_ft_p75), 0)} ft; ${text(t(W.water_level_sources))} within ${num(n(W.water_radius_mi), 0)} mi; latest ${text(String(W.latest_water_level_year ?? "—"))}`
+                : undefined,
+            ],
+            ["Closed-loop geothermal bores nearby", W ? num(n(W.n_geothermal_bores), 0) : "—", "SDR wells with that proposed use within 10 mi"],
+            ["Aquifer · GCD", W ? `${text(t(W.aquifer_majority))} · ${text(t(W.gcd_majority))}` : "—", "most common among nearby TWDB monitored wells"],
+            ["Confidence", text(t(W?.wells_confidence)), "free-text driller logs: a screen, not a geotechnical finding"],
           ]}
         />
         <Section

@@ -78,6 +78,18 @@ def test_hours_below_25c_scored_from_climate_layer(cfg):
     assert "hours25" not in notes["not_built"]
 
 
+def test_drillability_and_depth_to_water_from_wells_layer(cfg):
+    rows = [plant(eia_id=1, thick_hard_layer_share=0.05, depth_to_water_ft=250.0),
+            plant(eia_id=2, thick_hard_layer_share=0.30, depth_to_water_ft=120.0),
+            plant(eia_id=3, thick_hard_layer_share=0.80, depth_to_water_ft=40.0),
+            plant(eia_id=4, thick_hard_layer_share=np.nan, depth_to_water_ft=np.nan)]
+    out, notes = run(cfg, rows)
+    o = out.set_index("eia_id")
+    assert list(o["pts_drill"]) == [4, 2, 0, 2] and list(o["pts_water"]) == [2, 1, 0, 1]
+    assert "drill" in o.loc[4, "missing_inputs"] and "drill" not in (o.loc[1, "missing_inputs"] or "")
+    assert {"drill", "water"}.isdisjoint(notes["not_built"]) and "lambda" in notes["not_built"]
+
+
 def test_no_345_within_radius_is_data_not_missing(cfg):
     out, _ = run(cfg, [plant(eia_id=1, dist_345kv_sub_mi=np.nan), plant(eia_id=2, transmission_source=None, dist_345kv_sub_mi=np.nan)])
     o = out.set_index("eia_id")

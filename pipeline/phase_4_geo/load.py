@@ -49,9 +49,16 @@ CLIMATE_COLUMNS = [
     "nsrdb_location_id", "nsrdb_lat", "nsrdb_lon", "nsrdb_elevation_m", "climate_years", "climate_source",
     "climate_fetched", "climate_confidence", "run_id",
 ]
+WELLS_COLUMNS = [
+    "eia_id", "n_logs", "logs_radius_mi", "thick_hard_layer_share", "hard_layer_ft_median", "hard_layer_ft_p90",
+    "caliche_log_share", "gypsum_log_share", "hard_rock_log_share", "lost_circulation_log_share", "median_log_depth_ft",
+    "n_geothermal_bores", "n_water_levels", "water_radius_mi", "depth_to_water_ft", "depth_to_water_ft_p25",
+    "depth_to_water_ft_p75", "water_level_sources", "latest_water_level_year", "aquifer_majority", "gcd_majority",
+    "wells_source", "wells_fetched", "wells_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
                  "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
-                 "climate": CLIMATE_COLUMNS}
+                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS}
 BATCH = 100
 
 

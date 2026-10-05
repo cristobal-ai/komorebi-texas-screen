@@ -182,6 +182,25 @@ layers:
     rate_limit_wait_s: 10          # HTTP 429 OVER_RATE_LIMIT: wait n × this (n = 1, 2, ...), not counted as a retry
     max_rate_limit_waits: 12
 
+  wells:
+    # TWDB statewide nightly zips (twdb.texas.gov/groundwater/data/): Submitted Driller's Reports (~711k wells since ~2001,
+    # lithology logs, static levels) and the Groundwater Database (monitored wells, aquifer, GCD, measured levels).
+    sdr_url: https://www.twdb.texas.gov/groundwater/data/SDRDownload.zip      # ~150 MB
+    gwdb_url: https://www.twdb.texas.gov/groundwater/data/GWDBDownload.zip    # ~85 MB
+    texas_bbox: [-106.7, 25.8, -93.5, 36.6]   # driller coordinates outside this are dropped (typos)
+    bore_depth_ft: 500             # loop-field borehole depth over which a log is read (typical vertical GHX 300-600 ft)
+    min_log_depth_ft: 50           # shallower logs (soil borings) are left out of drillability
+    thick_layer_ft: 20             # a log is "thick" when caliche + gypsum + anhydrite add up to >= this within bore_depth_ft
+    search_radii_mi: [3, 6, 10]    # first radius holding min_logs logs (min_levels levels) is used; none in 10 mi = no data
+    min_logs: 5
+    min_levels: 3
+    water_level_since: 2000        # GWDB: latest publishable measurement per well, from this year on
+    patterns:                      # regex on the upper-cased driller description
+      caliche: 'CAL+[IE]CH|CALECH'
+      gypsum: 'GYP|ANHYD|SELENITE'
+      hard_rock: 'LIME ?STONE|LIME ?ROCK|DOLOM|GRANITE|BASALT|QUARTZITE|HARD ROCK'   # display only: rotary/DTH drills these
+      lost_circulation: 'LOST CIRC|NO RETURN|LOST RETURN|CAVERN|CAVITY|VOID'           # display only: karst / grout loss risk
+
   parcels:
     # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
     # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each
@@ -293,6 +312,10 @@ scoring:
       thermal_response_test_flag_below: 1.0
     drillability:
       max: 4
+      # metric: thick_hard_layer_share (wells layer) = share of nearby driller logs with >= thick_layer_ft of caliche /
+      # gypsum / anhydrite in the top bore_depth_ft. Bands proposed 5 Oct 2026 (brief gives the criterion, not the cut points).
+      metric: thick_hard_layer_share
+      bands: [{lt: 0.10, pts: 4}, {lt: 0.25, pts: 3}, {lt: 0.50, pts: 2}, {lt: 0.75, pts: 1}, {else: 0}]
     hours_below_25c_drybulb:
       max: 3
       bands: [{gte: 6000, pts: 3}, {gte: 5000, pts: 2}, {gte: 4000, pts: 1}, {else: 0}]
