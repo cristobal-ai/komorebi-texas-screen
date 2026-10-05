@@ -12,7 +12,7 @@ from pipeline.phase_4_geo import load as layer_load
 
 log = logging.getLogger(__name__)
 
-# Must match supabase/migrations/*_plant_scores.sql (minus loaded_at); a test enforces it.
+# Must match supabase/migrations/*_plant_scores.sql (minus loaded_at) followed by later `add column`s; a test enforces it.
 SCORE_COLUMNS = [
     "eia_id", "score_total", "score_A", "score_B", "score_C", "score_D", "score_E", "score_F",
     "pts_capture", "pts_curtailment", "pts_cf_benchmark", "pts_offtake", "pts_poly", "pts_monofacial", "pts_tracker",
@@ -21,6 +21,7 @@ SCORE_COLUMNS = [
     "data_completeness", "missing_inputs", "rank_overall", "rank_in_tier", "region", "cf_used", "cf_source",
     "cf_benchmark", "cf_below_benchmark_pts", "offtake_confidence", "fixed_cost_est_usd", "fixed_cost_includes_fiber",
     "fixed_cost_per_kw_it", "thermal_response_test_required", "score_version", "run_id",
+    "fiber_lateral_miles",   # added by *_layers_fiber.sql (alter table)
 ]
 
 

@@ -36,8 +36,14 @@ FLOOD_COLUMNS = [
     "zone_d_share", "flood_zones", "flood_flag", "nfhl_study_ids", "flood_source", "flood_fetched", "flood_confidence",
     "run_id",
 ]
+FIBER_COLUMNS = [
+    "eia_id", "dist_class1_rail_mi", "nearest_rail_owner", "nearest_rail_subdiv", "dist_interstate_mi",
+    "nearest_interstate", "fiber_lateral_miles", "fiber_corridor", "nearest_carrier_hotel", "carrier_hotel_gc_mi",
+    "carrier_hotel_route_mi_est", "latency_rtt_ms_est", "carrier_hotel_rtt_ms", "fiber_search_mi", "fiber_source",
+    "fiber_fetched", "fiber_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
-                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS}
+                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS}
 BATCH = 100
 
 

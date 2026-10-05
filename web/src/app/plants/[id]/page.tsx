@@ -22,6 +22,7 @@ type Layers = {
   parcels: Record<string, string | number | boolean | null> | null;
   gas: Record<string, string | number | boolean | null> | null;
   flood: Record<string, string | number | boolean | null> | null;
+  fiber: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -124,15 +125,16 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
-  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data };
+  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data, fiber: fbRes.data };
 
   const flags: string[] = [];
   if (L.flood?.flood_flag)
@@ -263,6 +265,18 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
                 : undefined,
             ],
             ["Any gas line", L.gas ? (n(L.gas.dist_gas_any_mi) !== null ? `${num(n(L.gas.dist_gas_any_mi))} mi` : "—") : "—", "gathering included; RRC QPipelines (display only)"],
+            [
+              "Fiber lateral (proxy)",
+              L.fiber ? (n(L.fiber.fiber_lateral_miles) !== null ? `${num(n(L.fiber.fiber_lateral_miles))} mi to ${L.fiber.fiber_corridor === "rail" ? `${text(t(L.fiber.nearest_rail_owner))} mainline` : text(t(L.fiber.nearest_interstate))}` : `no corridor within ${num(n(L.fiber.fiber_search_mi), 0)} mi`) : "—",
+              L.fiber
+                ? `Class I rail ${n(L.fiber.dist_class1_rail_mi) !== null ? `${num(n(L.fiber.dist_class1_rail_mi))} mi` : "none near"} · interstate ${n(L.fiber.dist_interstate_mi) !== null ? `${num(n(L.fiber.dist_interstate_mi))} mi` : "none near"} · confidence low (routes are not public)`
+                : undefined,
+            ],
+            [
+              "Carrier hotel latency (est.)",
+              L.fiber && n(L.fiber.latency_rtt_ms_est) !== null ? `~${num(n(L.fiber.latency_rtt_ms_est))} ms RTT to ${text(t(L.fiber.nearest_carrier_hotel))}` : "—",
+              L.fiber ? `${text(t(L.fiber.carrier_hotel_rtt_ms))} (estimated route from great circle × config route factor; light in glass only)` : undefined,
+            ],
             [
               "FEMA flood zones",
               !L.flood ? "—" : L.flood.flood_status === "not_mapped" ? "No digital flood map: unknown" : `${pct(n(L.flood.sfha_share), 1)} of array in SFHA`,

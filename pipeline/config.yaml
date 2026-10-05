@@ -127,6 +127,23 @@ layers:
     near_miles: 5                # radius for the count / largest diameter of gas transmission lines near a plant
     pause_s: 0.5
 
+  fiber:
+    # PROXY (plan §2 item 7): long-haul fiber routes are proprietary, so measure the corridors it is laid in — Class I
+    # railroad mainline and interstate right-of-way — and the distance to the carrier hotels. fiber_confidence = low always.
+    rail_layer_url: https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_North_American_Rail_Network_Lines/FeatureServer/0
+    rail_owners: [UP, BNSF, CPKC]  # Class I railroads in Texas (CPKC = former KCS); NTAD field RROWNER1
+    rail_net: [M]                  # NTAD NET: M = mainline (sidings, yards, industry track excluded)
+    rail_bbox: [-107.0, 25.5, -93.3, 36.7]   # Texas plus a border margin (minx, miny, maxx, maxy, WGS84)
+    interstate_ref_regex: '(^|;)\s*I[ -]?\d+'  # OSM highway=motorway|trunk ways whose ref names an interstate
+    search_radius_mi: 60           # a corridor distance beyond this is reported as null ("none within")
+    # Carrier hotels named in the brief §3 (latency). Coordinates from PeeringDB, checked 5 Oct 2026.
+    carrier_hotels:
+      - {name: Dallas Infomart (1950 N Stemmons), peeringdb_fac: 505, lat: 32.800748, lon: -96.819412}
+      - {name: Houston 1301 Fannin, peeringdb_fac: 409, lat: 29.753242, lon: -95.365882}
+      - {name: San Antonio 100 Taylor St, peeringdb_fac: 6011, lat: 29.429369, lon: -98.486791}
+    route_factor: 1.5              # brief: fiber-route miles ≈ great-circle × 1.5
+    rtt_ms_per_route_mile: 0.0158  # 2 × 1.609 km × 4.9 µs/km (light in glass); excludes equipment delay
+
   flood:
     # FEMA National Flood Hazard Layer MapServer: layer 28 Flood Hazard Zones (FLD_ZONE, ZONE_SUBTY, SFHA_TF) and layer 0
     # NFHL Availability (digital FIRM study areas). Many rural Texas counties (Pecos, Milam) have no digital NFHL: those
@@ -262,7 +279,8 @@ scoring:
 
   F_fixed_cost_drag:           # penalty −15..0, on fixed_cost_per_kw_it
     # fixed_cost_est = sum(assumptions.fixed_cost_defaults_usd) + fiber_lateral_miles × fiber_lateral_cost_per_mile_usd.
-    # Until the fiber layer exists the fiber term is left out (fixed_cost_includes_fiber = false), so F is a floor.
+    # fiber_lateral_miles comes from the fiber proxy layer (nearest Class I mainline or interstate, low confidence); where it
+    # is null (no layer, or none within its search radius) the fiber term is left out (fixed_cost_includes_fiber = false).
     bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
 
 crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rapidfuzz 0–100

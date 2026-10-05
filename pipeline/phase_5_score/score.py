@@ -22,7 +22,7 @@ import pandas as pd
 from pipeline.common import DATA_DIR, load_config
 
 log = logging.getLogger(__name__)
-LAYERS = ("transmission", "parcels", "flood", "gas_pipelines")
+LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber")
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -204,10 +204,12 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
 
     # F — fixed-cost drag (penalty; not part of completeness) ----------------------------------------------------------
     fixed = float(sum(a["fixed_cost_defaults_usd"].values()))
-    fiber_mi = df.get("fiber_lateral_miles")
-    fiber_cost = (fiber_mi * a["fiber_lateral_cost_per_mile_usd"]).fillna(0) if fiber_mi is not None else 0.0
-    out["fixed_cost_est_usd"] = fixed + fiber_cost
-    out["fixed_cost_includes_fiber"] = fiber_mi is not None
+    # fiber lateral = miles to the nearest Class I mainline / interstate (fiber proxy layer); null = none within its
+    # search radius or no layer → left out, so that plant's F stays a floor (fixed_cost_includes_fiber = false)
+    fiber_mi = df.get("fiber_lateral_miles", pd.Series(np.nan, index=df.index))
+    out["fiber_lateral_miles"] = fiber_mi
+    out["fixed_cost_est_usd"] = fixed + (fiber_mi * a["fiber_lateral_cost_per_mile_usd"]).fillna(0)
+    out["fixed_cost_includes_fiber"] = fiber_mi.notna()
     out["fixed_cost_per_kw_it"] = out["fixed_cost_est_usd"] / (df["firm_it_mw"] * 1000)
     out["pts_fixed_cost"] = out["fixed_cost_per_kw_it"].map(lambda v: band(v, s["F_fixed_cost_drag"]["bands"])).fillna(0.0)
 

@@ -119,6 +119,8 @@ def test_loader_columns_match_migration_and_scores(cfg):
     sql = next(Path("supabase/migrations").glob("*_plant_scores.sql")).read_text(encoding="utf-8")
     body = re.search(r"create table public\.plant_scores \((.*?)\n\);", sql, re.S).group(1)
     cols = [m.group(1) for line in body.splitlines() if (m := re.match(r"\s*([a-z_0-9]+)\s", line.split("--")[0]))]
+    for f in sorted(Path("supabase/migrations").glob("*.sql")):        # later `alter table plant_scores add column`s
+        cols += re.findall(r"alter table public\.plant_scores\s+add column (?:if not exists )?([a-z_0-9]+)", f.read_text(encoding="utf-8"))
     assert [c for c in cols if c != "loaded_at"] == [c.lower() for c in sl.SCORE_COLUMNS]
     out, _ = run(cfg, [plant(eia_id=1)])
     out["score_version"], out["run_id"] = "v", "r"
