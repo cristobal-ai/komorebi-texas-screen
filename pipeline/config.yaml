@@ -185,6 +185,11 @@ scoring:
   # q25/q50/q75 = 0.61/0.65/0.69 (range 0.33-0.84), curtailment_pct 4.6%/7.7%/15.0% (max 28.8%). The fixed bands would
   # leave < 25% of plants in the 12-point bucket and < 25% in the 0-point bucket, so they discriminate less.
   breakpoint_mode: quantile    # fixed | quantile
+  # Decisions 5 Oct 2026 (owner): (1) an input that is missing or whose layer is not built yet scores `missing_share` of
+  # its points (neutral) and counts against data_completeness; a measured "none within radius" is data, not missing.
+  # (2) flood_flag is shown and lowers nothing: flagged plants stay ranked. (3) offtake has no source yet: `unknown` points.
+  missing_share: 0.5
+  rank_statuses: [pass]        # review plants get scores but no rank
 
   A_acquisition_discount:      # 30 pts — lower performance scores higher
     capture_rate:              # points by capture-rate band (fraction of hub average)
@@ -199,6 +204,8 @@ scoring:
       quantile: {q75: 8, q50: 5, else: 2}
     cf_vs_benchmark:           # capacity-factor points below regional benchmark
       max: 6
+      # CF = SCED net CF where metrics_status = ok, else EIA-923 net_ac_cf. Benchmark = benchmarks.regional_cf[region]
+      # when set, else the median CF of the scored plants in that region (computed at scoring time, written to the report).
       fixed: [{below_pts_gt: 4, pts: 6}, {below_pts_gt: 2, pts: 4}, {else: 1}]
     offtake_status:
       max: 4
@@ -254,6 +261,8 @@ scoring:
       bands: [{gte: 200, pts: 2}, {gte: 100, pts: 1}, {else: 0}]
 
   F_fixed_cost_drag:           # penalty −15..0, on fixed_cost_per_kw_it
+    # fixed_cost_est = sum(assumptions.fixed_cost_defaults_usd) + fiber_lateral_miles × fiber_lateral_cost_per_mile_usd.
+    # Until the fiber layer exists the fiber term is left out (fixed_cost_includes_fiber = false), so F is a floor.
     bands: [{lt: 100, pts: 0}, {lt: 250, pts: -5}, {lt: 450, pts: -10}, {else: -15}]
 
 crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rapidfuzz 0–100
@@ -274,7 +283,10 @@ crosswalk:                     # Phase 3a EIA ↔ ERCOT matching; scores are rap
 
 benchmarks:
   cf_plausible_range: [0.05, 0.40]   # net AC CF outside this gets cf_note = outside_plausible_range (not dropped)
-  regional_cf:                 # net AC capacity factor; fill from fleet medians in Phase 3
+  regions:                     # first match wins; a plant matching none is central_texas
+    west_texas: {lon_lt: -100.0}
+    coastal: {lat_lt: 30.0, lon_gt: -99.5}       # coast and south Texas (Houston, Brazoria, Cameron, Webb, Karnes)
+  regional_cf:                 # net AC capacity factor; null = fleet median of the region at scoring time
     west_texas: null
     central_texas: null
     coastal: null

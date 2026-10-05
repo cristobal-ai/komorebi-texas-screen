@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -13,7 +14,72 @@ import {
   type MonthlyMetric,
   type Plant,
 } from "@/lib/plants";
+import { SECTIONS, missingLabels, type Score } from "@/lib/scores";
 import MonthlyCharts from "./monthly-charts";
+
+type Layers = {
+  transmission: Record<string, string | number | boolean | null> | null;
+  parcels: Record<string, string | number | boolean | null> | null;
+  gas: Record<string, string | number | boolean | null> | null;
+  flood: Record<string, string | number | boolean | null> | null;
+};
+
+const n = (v: unknown) => (typeof v === "number" ? v : null);
+const t = (v: unknown) => (typeof v === "string" ? v : null);
+
+function ScoreSection({ s }: { s: Score }) {
+  return (
+    <section className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Score (brief §5, default weights)</h2>
+      <p className="mt-1 text-sm">
+        <span className="text-2xl font-semibold tabular-nums">{num(s.score_total)}</span>
+        <span className="ml-2 text-neutral-600 dark:text-neutral-400">
+          {s.rank_overall ? `rank ${s.rank_overall} overall · ${s.rank_in_tier} in tier` : "review plant: scored, not ranked"} · data{" "}
+          {pct(s.data_completeness, 0)}
+        </span>
+      </p>
+      <table className="mt-3 w-full text-sm">
+        <thead>
+          <tr className="text-left text-neutral-500">
+            <th scope="col" className="py-1 font-medium">Component</th>
+            <th scope="col" className="py-1 text-right font-medium">Points</th>
+            <th scope="col" className="py-1 text-right font-medium">Max</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SECTIONS.map((sec) => (
+            <Fragment key={sec.id}>
+              <tr className="border-t border-neutral-200 font-medium dark:border-neutral-800">
+                <td className="py-1">{sec.label}</td>
+                <td className="py-1 text-right tabular-nums">{num(s[`score_${sec.id}` as keyof Score] as number)}</td>
+                <td className="py-1 text-right tabular-nums">{sec.penalty ? `−${sec.max}` : sec.max}</td>
+              </tr>
+              {sec.components.map((c) => {
+                const missing = (s.missing_inputs ?? "").split(";").includes(String(c.key).replace(/^pts_/, ""));
+                return (
+                  <tr key={String(c.key)} className="text-neutral-600 dark:text-neutral-400">
+                    <td className="py-0.5 pl-4">
+                      {c.label}
+                      {missing && <span className="ml-2 text-xs text-neutral-500">not measured: neutral half points</span>}
+                    </td>
+                    <td className="py-0.5 text-right tabular-nums">{num(s[c.key] as number | null)}</td>
+                    <td className="py-0.5 text-right tabular-nums">{sec.penalty ? `−${c.max}` : c.max}</td>
+                  </tr>
+                );
+              })}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 text-xs text-neutral-500">
+        CF used {pct(s.cf_used)} ({text(s.cf_source)}) vs {text(s.region)} benchmark {pct(s.cf_benchmark)}. Fixed cost
+        ${num((s.fixed_cost_est_usd ?? 0) / 1e6, 1)}M → ${num(s.fixed_cost_per_kw_it, 0)}/kW firm IT
+        {s.fixed_cost_includes_fiber ? "" : " (fiber lateral not included yet: a floor)"}. Offtake {text(s.offtake_confidence)}.
+        {missingLabels(s.missing_inputs).length > 0 && ` Neutral inputs: ${missingLabels(s.missing_inputs).join("; ")}.`}
+      </p>
+    </section>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +124,21 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
+  const [scoreRes, trRes, pcRes, gasRes, flRes] = await Promise.all([
+    supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
+  ]);
+  const score = (scoreRes.data ?? null) as Score | null;
+  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data };
+
   const flags: string[] = [];
+  if (L.flood?.flood_flag)
+    flags.push(
+      `Flood: ${pct(n(L.flood.sfha_share), 0)} of the array (${num(n(L.flood.sfha_acres), 0)} acres) in FEMA 1% annual-chance zones (${text(t(L.flood.flood_zones))}); the brief’s kill criterion — shown, not scored`,
+    );
   if (p.sb6_review_required) flags.push(`SB6 co-location review: planned load ${num(p.planned_load_mw)} MW is at or above the large-load threshold`);
   if (p.tax_equity_consent_likely) flags.push("Tax-equity consent likely (COD ≥ 2019)");
   if (p.itc_recapture_open) flags.push("ITC recapture window may be open (COD within 5 years)");
@@ -91,6 +171,8 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ))}
         </ul>
       )}
+
+      {score && <ScoreSection s={score} />}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Section
@@ -159,6 +241,38 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
           ]}
         />
         <Section
+          title="Site (Phase 4 layers)"
+          rows={[
+            [
+              "345 kV substation",
+              L.transmission ? (n(L.transmission.dist_345kv_sub_mi) !== null ? `${num(n(L.transmission.dist_345kv_sub_mi))} mi` : `none within ${num(n(L.transmission.transmission_search_mi), 0)} mi`) : "—",
+              text(t(L.transmission?.nearest_345kv_sub_name)),
+            ],
+            ["Voltages within 3 mi", text(t(L.transmission?.kv_classes_within_near)), L.transmission ? `source: ${text(t(L.transmission.transmission_source))}` : undefined],
+            [
+              "Host parcels",
+              L.parcels ? `${num(n(L.parcels.parcel_acres_host), 0)} acres · ${num(n(L.parcels.acres_per_mw_parcel))} ac/MW` : "—",
+              L.parcels ? `status ${text(t(L.parcels.parcel_status))}; headroom ${pct(n(L.parcels.headroom_pct_unified), 0)} with same-owner land` : undefined,
+            ],
+            ["Land control", L.parcels ? yesNo(L.parcels.unified_land_control as boolean | null) : "—", text(t(L.parcels?.host_owners))],
+            [
+              "Gas transmission line",
+              L.gas ? (n(L.gas.dist_gas_transmission_mi) !== null ? `${num(n(L.gas.dist_gas_transmission_mi))} mi` : `none within ${num(n(L.gas.gas_search_mi), 0)} mi`) : "—",
+              L.gas && n(L.gas.dist_gas_transmission_mi) !== null
+                ? `${text(t(L.gas.gas_transmission_operator))} · ${num(n(L.gas.gas_transmission_diameter_in), 0)}″${L.gas.gas_transmission_interstate ? " · interstate" : ""}`
+                : undefined,
+            ],
+            ["Any gas line", L.gas ? (n(L.gas.dist_gas_any_mi) !== null ? `${num(n(L.gas.dist_gas_any_mi))} mi` : "—") : "—", "gathering included; RRC QPipelines (display only)"],
+            [
+              "FEMA flood zones",
+              !L.flood ? "—" : L.flood.flood_status === "not_mapped" ? "No digital flood map: unknown" : `${pct(n(L.flood.sfha_share), 1)} of array in SFHA`,
+              L.flood && L.flood.flood_status === "ok"
+                ? `zones ${text(t(L.flood.flood_zones))}; 0.2%: ${pct(n(L.flood.x500_share), 1)}; floodway ${pct(n(L.flood.floodway_share), 1)}`
+                : undefined,
+            ],
+          ]}
+        />
+        <Section
           title="Location & provenance"
           rows={[
             ["Latitude, longitude", p.lat !== null && p.lon !== null ? `${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}` : "—"],
@@ -170,8 +284,9 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
       </div>
       <MonthlyCharts rows={months} excluded={allMonths.length - months.length} />
       <p className="mt-6 text-xs text-neutral-500">
-        Not scored yet (Phases 4–5 add geo layers and the composite score). Low capture rate and high curtailment are
-        price signals and will score higher, never be filtered out.
+        Low capture rate, high curtailment and older modules are price signals and score higher; they are never filtered
+        out. Inputs whose layers are not built yet (soil λ, drillability, climate, water table, load pockets) and the
+        offtake status score half their points until measured.
       </p>
     </main>
   );

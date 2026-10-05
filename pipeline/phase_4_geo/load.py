@@ -51,11 +51,12 @@ def to_rows(df: pd.DataFrame, columns: list[str], run_id: str) -> list[dict]:
 
 
 def load_layer(name: str, df: pd.DataFrame, url: str, key: str, run_id: str, plant_ids: set[int] | None = None,
-               session=requests) -> int:
-    table = f"layers_{name}"
+               session=requests, table: str | None = None, columns: list[str] | None = None) -> int:
+    """Upsert one row per eia_id into `table` (default layers_<name>), then delete rows of earlier runs and check the count."""
+    table = table or f"layers_{name}"
     if plant_ids is not None:
         df = df[df["eia_id"].isin(plant_ids)]
-    rows = to_rows(df, LAYER_COLUMNS[name], run_id)
+    rows = to_rows(df, columns or LAYER_COLUMNS[name], run_id)
     base = f"{url.rstrip('/')}/rest/v1/{table}"
     h = headers(key) | {"Content-Type": "application/json"}
     for i in range(0, len(rows), BATCH):

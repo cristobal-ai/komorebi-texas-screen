@@ -1,30 +1,48 @@
 import { createClient } from "@/lib/supabase/server";
 import { TABLE_COLUMNS, type TableRow } from "@/lib/plants";
-import PlantTable from "./plant-table";
+import { TABLE_SCORE_COLUMNS, type TableScore } from "@/lib/scores";
+import PlantTable, { type ScoredRow } from "./plant-table";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("plants").select(TABLE_COLUMNS).order("ac_mw", { ascending: false });
-  const { data: meta } = await supabase.from("plants").select("run_id,loaded_at").limit(1).maybeSingle();
+  const [plants, scores, flood, meta] = await Promise.all([
+    supabase.from("plants").select(TABLE_COLUMNS).order("ac_mw", { ascending: false }),
+    supabase.from("plant_scores").select(TABLE_SCORE_COLUMNS),
+    supabase.from("layers_flood").select("eia_id,flood_status,flood_flag"),
+    supabase.from("plant_scores").select("run_id,loaded_at,score_version").limit(1).maybeSingle(),
+  ]);
+  const error = plants.error ?? scores.error ?? flood.error;
+  const scoreById = new Map(((scores.data ?? []) as TableScore[]).map((s) => [s.eia_id, s]));
+  const floodById = new Map(
+    ((flood.data ?? []) as { eia_id: number; flood_status: string | null; flood_flag: boolean | null }[]).map((f) => [f.eia_id, f]),
+  );
+  const rows: ScoredRow[] = ((plants.data ?? []) as unknown as TableRow[]).map((p) => ({
+    ...p,
+    score: scoreById.get(p.eia_id) ?? null,
+    flood_status: floodById.get(p.eia_id)?.flood_status ?? null,
+    flood_flag: floodById.get(p.eia_id)?.flood_flag ?? null,
+  }));
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-6">
-      <h1 className="text-xl font-semibold">ERCOT PV plants — screen v0.1</h1>
+      <h1 className="text-xl font-semibold">ERCOT PV plants — screen v0.3</h1>
       <p className="mt-1 max-w-3xl text-sm text-neutral-600 dark:text-neutral-400">
-        Plants passing the hard filters (≥10 MW AC, COD 2015–2022, Texas) from USPVDB v4.0 + EIA-860M/860/923. Not
-        scored yet: sort by any column, including the new market columns from the SCED backfill. Low capacity factor is a price signal, not a defect. “Review” = footprint
-        unresolved until parcel data (array area alone is below the site-footprint thresholds).
+        Plants passing the hard filters (≥10 MW AC, COD 2015–2022, Texas), ranked on the brief’s scoring model. Poor
+        generation performance is a price signal, not a defect: low capture, high curtailment and older modules score
+        higher. Inputs not measured yet (thermal layers, load pockets, offtake) score half their points; “Data” shows how
+        much of each score rests on real data. Move the weights to re-rank.
       </p>
       {error ? (
         <p className="mt-6 text-sm text-red-600">Could not load plants: {error.message}</p>
       ) : (
-        <PlantTable rows={(data ?? []) as unknown as TableRow[]} />
+        <PlantTable rows={rows} />
       )}
-      {meta && (
+      {meta.data && (
         <p className="mt-4 text-xs text-neutral-500">
-          Data run {meta.run_id} · loaded {new Date(meta.loaded_at).toISOString().slice(0, 16).replace("T", " ")} UTC
+          Scores run {meta.data.run_id} (config {meta.data.score_version}) · loaded{" "}
+          {new Date(meta.data.loaded_at).toISOString().slice(0, 16).replace("T", " ")} UTC
         </p>
       )}
     </main>

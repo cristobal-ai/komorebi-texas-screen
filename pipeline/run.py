@@ -5,6 +5,7 @@
     python -m pipeline.run --phase 1-2 --county Pecos
     python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
     python -m pipeline.run --phase 4 --layer transmission|gas_pipelines|flood|parcels [--load]   # geo layers (see pipeline/phase_4_geo)
+    python -m pipeline.run --phase 5 [--load]         # scores from plants + metrics + layers → data/scores.parquet
     python -m pipeline.run --phase 3b                 # 3b: SCED + SPP history → curtailment, capture rate
     python -m pipeline.run --phase 3b --since 2026-07-15 --until 2026-07-15   # one-day probe
 """
@@ -18,8 +19,8 @@ import geopandas as gpd
 
 from pipeline.common import DATA_DIR, load_env
 
-IMPLEMENTED = {1, 2, 3, 4}
-DEFAULT_ALL = [1, 2, 3]   # phase 4 layers download several sources; run them explicitly (--phase 4)
+IMPLEMENTED = {1, 2, 3, 4, 5}
+DEFAULT_ALL = [1, 2, 3, 5]   # phase 4 layers download several sources; run them explicitly (--phase 4); 5 rescores from what exists
 
 
 def _phases(spec: str) -> list[int]:
@@ -40,7 +41,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--no-fetch", action="store_true", help="3b: compute from cached days only")
     ap.add_argument("--retry-missing", action="store_true", help="3b: re-fetch days ERCOT previously returned no data for")
     ap.add_argument("--layer", default="all", help="4: one geo layer (transmission, gas_pipelines, flood, parcels) or all")
-    ap.add_argument("--load", action="store_true", help="after phase 2, write pass/review plants to Supabase")
+    ap.add_argument("--load", action="store_true", help="after phase 2 / 4 / 5, write plants / layers / scores to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     load_env()
@@ -74,6 +75,13 @@ def main(argv: list[str] | None = None) -> None:
                 from pipeline import load_supabase
 
                 load_supabase.run()
+        elif n == 5:
+            from pipeline.phase_5_score import load as score_load
+            from pipeline.phase_5_score import score
+
+            score.run()
+            if args.load:
+                score_load.run()
         elif n == 4:
             from pipeline.phase_4_geo import load as layer_load
             from pipeline.phase_4_geo import flood, gas_pipelines, parcels, transmission

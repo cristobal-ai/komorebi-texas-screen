@@ -116,7 +116,7 @@ def test_loader_columns_match_migration_and_rows_are_json_safe(plants, cfg):
 def test_run_py_phase4_is_explicit_not_part_of_all():
     from pipeline import run as r
 
-    assert r._phases("all") == [1, 2, 3] and r._phases("4") == [4]
+    assert r._phases("all") == [1, 2, 3, 5] and r._phases("4") == [4]
 
 
 def test_plant_bboxes_cover_every_plant_and_share_boxes_in_one_grid_cell(plants, cfg):

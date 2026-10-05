@@ -11,15 +11,35 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { TIERS, metricsStatusLabel, num, pct, text, yearMonth, type TableRow, type Tier } from "@/lib/plants";
+import {
+  DEFAULT_WEIGHTS,
+  SECTIONS,
+  isDefaultWeights,
+  missingLabels,
+  rankBy,
+  weightedScore,
+  type TableScore,
+  type Weights,
+} from "@/lib/scores";
 
-const col = createColumnHelper<TableRow>();
+/** A plants row with its Phase 5 score and flood flag (null when not scored / no flood row). */
+export type ScoredRow = TableRow & {
+  score: TableScore | null;
+  flood_status: string | null;
+  flood_flag: boolean | null;
+};
+
+/** ScoredRow plus the score and ranks under the current weights (pass plants only are ranked). */
+type Row = ScoredRow & { w_score: number | null; w_rank: number | null; w_tier_rank: number | null };
+
+const col = createColumnHelper<Row>();
 const TIER_ORDER: Record<string, number> = { T1b: 0, T1a: 1, T2: 2, T3: 3 };
 
 /** Market-metric column: a blank is never a zero, hover says why (behind the meter, not telemetered, not verified). */
 function metric(
   id: string,
   header: string,
-  pick: (r: TableRow) => number | null,
+  pick: (r: Row) => number | null,
   format: (v: number) => string,
   flag?: (v: number) => boolean,
 ) {
@@ -49,6 +69,58 @@ function metric(
 }
 
 const columns = [
+  col.accessor((r) => r.w_rank ?? undefined, {
+    id: "rank",
+    header: "Rank",
+    sortUndefined: "last",
+    meta: { numeric: true },
+    cell: (c) => {
+      const v = c.getValue();
+      return v === undefined ? (
+        <span title="Review plants are scored but not ranked" className="text-neutral-400">
+          —
+        </span>
+      ) : (
+        v
+      );
+    },
+  }),
+  col.accessor((r) => r.w_score ?? undefined, {
+    id: "score",
+    header: "Score",
+    sortUndefined: "last",
+    meta: { numeric: true },
+    cell: (c) => {
+      const s = c.row.original.score;
+      const v = c.getValue();
+      if (v === undefined || !s) return <span className="text-neutral-400">—</span>;
+      const parts = SECTIONS.map((sec) => `${sec.label}: ${num(s[`score_${sec.id}` as keyof TableScore] as number)}`).join("\n");
+      return (
+        <span title={`Default-weight sections\n${parts}`} className="font-medium">
+          {num(v)}
+        </span>
+      );
+    },
+  }),
+  col.accessor((r) => r.w_tier_rank ?? undefined, {
+    id: "tier_rank",
+    header: "In tier",
+    sortUndefined: "last",
+    meta: { numeric: true },
+    cell: (c) => c.getValue() ?? "—",
+  }),
+  col.accessor((r) => r.score?.data_completeness ?? undefined, {
+    id: "completeness",
+    header: "Data",
+    sortUndefined: "last",
+    meta: { numeric: true },
+    cell: (c) => {
+      const v = c.getValue();
+      if (v === undefined) return "—";
+      const miss = missingLabels(c.row.original.score?.missing_inputs);
+      return <span title={miss.length ? `Scored neutral (half points): ${miss.join("; ")}` : "All inputs measured"}>{pct(v, 0)}</span>;
+    },
+  }),
   col.accessor("plant_name", {
     header: "Plant",
     cell: (c) => (
@@ -83,27 +155,55 @@ const columns = [
   metric("peak_hsl_ratio_recent", "Recent peak", (r) => r.peak_hsl_ratio_recent, (v) => num(v, 2), (v) => v < 0.75),
   col.accessor("planned_load_mw", { header: "Load MW", cell: (c) => num(c.getValue()), meta: { numeric: true } }),
   col.accessor("sb6_review_required", { header: "SB6", cell: (c) => (c.getValue() ? "Yes" : "No") }),
+  col.accessor((r) => (r.flood_flag ? 2 : r.flood_status === "not_mapped" ? 1 : 0), {
+    id: "flood",
+    header: "Flood",
+    sortDescFirst: true,
+    cell: (c) => {
+      const r = c.row.original;
+      if (r.flood_flag)
+        return <span title="10% or more of the array in a FEMA 1% annual-chance zone (shown, not scored)">⚠ SFHA</span>;
+      if (r.flood_status === "not_mapped")
+        return (
+          <span title="No digital FEMA flood map covers this site: risk unknown, not zero" className="text-neutral-400">
+            unmapped
+          </span>
+        );
+      return r.flood_status ? "—" : "";
+    },
+  }),
   col.accessor("filter_status", { header: "Status", cell: (c) => c.getValue() }),
 ];
 
-export default function PlantTable({ rows }: { rows: TableRow[] }) {
+export default function PlantTable({ rows }: { rows: ScoredRow[] }) {
   const [tiers, setTiers] = useState<Set<Tier>>(new Set(TIERS.map((t) => t.id)));
   const [showReview, setShowReview] = useState(false);
   const [query, setQuery] = useState("");
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "tier", desc: false },
-    { id: "ac_mw", desc: true },
-  ]);
+  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const [showWeights, setShowWeights] = useState(false);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "rank", desc: false }]);
+
+  // Score and rank every plant under the current weights; ranks are over all pass plants, not just the visible ones.
+  const scored = useMemo<Row[]>(() => {
+    const withScore = rows.map((r) => ({ ...r, w_score: r.score ? weightedScore(r.score, weights) : null }));
+    const ranked = withScore.filter((r) => r.filter_status === "pass" && r.w_score !== null);
+    const overall = rankBy(ranked, (r) => r.w_score!, (r) => r.eia_id);
+    const inTier = new Map<number, number>();
+    for (const t of TIERS) {
+      rankBy(ranked.filter((r) => r.tier === t.id), (r) => r.w_score!, (r) => r.eia_id).forEach((v, k) => inTier.set(k, v));
+    }
+    return withScore.map((r) => ({ ...r, w_rank: overall.get(r.eia_id) ?? null, w_tier_rank: inTier.get(r.eia_id) ?? null }));
+  }, [rows, weights]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter(
+    return scored.filter(
       (r) =>
         (r.tier ? tiers.has(r.tier) : false) &&
         (showReview || r.filter_status === "pass") &&
         (!q || `${r.plant_name} ${r.county ?? ""} ${r.operator ?? ""}`.toLowerCase().includes(q)),
     );
-  }, [rows, tiers, showReview, query]);
+  }, [scored, tiers, showReview, query]);
 
   const table = useReactTable({
     data: filtered,
@@ -150,6 +250,47 @@ export default function PlantTable({ rows }: { rows: TableRow[] }) {
           className="ml-auto w-64 rounded border border-neutral-300 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900"
         />
       </div>
+      <div className="mt-3 text-sm">
+        <button
+          onClick={() => setShowWeights(!showWeights)}
+          aria-expanded={showWeights}
+          className="rounded border border-neutral-300 px-3 py-1 dark:border-neutral-700"
+        >
+          Weights{isDefaultWeights(weights) ? " (brief defaults)" : " (custom)"} {showWeights ? "▴" : "▾"}
+        </button>
+        {showWeights && (
+          <div className="mt-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+            <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+              {SECTIONS.map((sec) => (
+                <label key={sec.id} className="flex items-center gap-2">
+                  <span className="w-44 shrink-0">{sec.label}</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={40}
+                    step={1}
+                    value={weights[sec.id]}
+                    onChange={(e) => setWeights({ ...weights, [sec.id]: Number(e.target.value) })}
+                    className="w-full"
+                  />
+                  <span className="w-10 text-right tabular-nums">
+                    {sec.penalty ? "−" : ""}
+                    {weights[sec.id]}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-neutral-500">
+              Each slider sets a section’s maximum points (F: the maximum penalty). Positive maximum now{" "}
+              {SECTIONS.filter((s) => !s.penalty).reduce((t, s) => t + weights[s.id], 0)} (brief: 100). Ranks recompute
+              over all pass plants.{" "}
+              <button onClick={() => setWeights(DEFAULT_WEIGHTS)} className="underline">
+                Reset to brief defaults
+              </button>
+            </p>
+          </div>
+        )}
+      </div>
       <p className="mt-2 text-xs text-neutral-500">
         {filtered.length} plants · {num(totalMw)} MW AC · click headers to sort (shift-click for a second key) · *
         ILR assumed (no reported DC) · (a) CF from an annual EIA-923 respondent
@@ -161,7 +302,7 @@ export default function PlantTable({ rows }: { rows: TableRow[] }) {
         curtailment are price signals, not defects.
       </p>
       <div className="mt-2 overflow-x-auto rounded border border-neutral-200 dark:border-neutral-800">
-        <table className="w-full min-w-[1240px] text-sm">
+        <table className="w-full min-w-[1500px] text-sm">
           <thead className="bg-neutral-50 dark:bg-neutral-900">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
