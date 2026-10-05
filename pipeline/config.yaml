@@ -159,6 +159,29 @@ layers:
     point_buffer_m: 300          # plants with no USPVDB polygon: a buffer around the EIA point (confidence low)
     pause_s: 0.5
 
+  climate:
+    # NSRDB PSM v4 (NLR, formerly NREL; developer.nrel.gov retired 29 May 2026) single-point CSV download: hourly air
+    # temperature and relative humidity at one ~4 km GOES cell per plant. Air temperature in NSRDB comes from MERRA-2
+    # reanalysis downscaled to the cell, so it is a modelled value (climate_confidence = medium). Needs NLR_API_KEY and
+    # NLR_API_EMAIL (the API rejects a request without a valid email). 10,000 single-point requests/day, 1,000/hour.
+    api_url: https://developer.nlr.gov/api/nsrdb/v2/solar/{dataset}-download.csv
+    dataset: nsrdb-GOES-aggregated-v4-0-0
+    years: [2021, 2022, 2023, 2024, 2025]   # scored value = mean over these years (Komorebi's Pecos case used 2024 alone)
+    tmy_dataset: nsrdb-GOES-tmy-v4-0-0
+    tmy_name: tmy                  # latest typical meteorological year; display only
+    interval_min: 60
+    attributes: [air_temperature, relative_humidity, dew_point]
+    point_round_deg: 0.02          # request point rounded to this grid (~2 km; the NSRDB cell is ~4 km); plants on one point share a download
+    drybulb_below_c: [15, 20, 25]  # hours below each threshold per year (normalised to 8,760 h); 25 is scored (Section E)
+    wetbulb_below_c: [20]          # wet-bulb (Stull 2011 from T and RH): the ceiling for evaporative / adiabatic assist
+    drybulb_above_c: 35            # hours above: dry-cooler derate hours
+    design_percentile: 0.996       # 0.4% annual exceedance design dry-bulb and wet-bulb (ASHRAE-style, from hourly data)
+    pause_s: 1.0
+    retries: 4
+    workers: 4                     # points fetched in parallel (each request takes ~10 s; the cap is 1,000/hour)
+    rate_limit_wait_s: 10          # HTTP 429 OVER_RATE_LIMIT: wait n × this (n = 1, 2, ...), not counted as a retry
+    max_rate_limit_waits: 12
+
   parcels:
     # TxGIO StratMap Land Parcels. No stable download URL: put the county zips (or the statewide file) in
     # data/raw/parcels/manual/ — shapefile / GeoPackage / File Geodatabase, zipped or not. Only the neighbourhood of each

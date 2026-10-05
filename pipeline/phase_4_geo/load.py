@@ -42,8 +42,16 @@ FIBER_COLUMNS = [
     "carrier_hotel_route_mi_est", "latency_rtt_ms_est", "carrier_hotel_rtt_ms", "fiber_search_mi", "fiber_source",
     "fiber_fetched", "fiber_confidence", "run_id",
 ]
+CLIMATE_COLUMNS = [
+    "eia_id", "hours_below_25c_drybulb", "hours_below_25c_drybulb_min", "hours_below_25c_drybulb_tmy",
+    "hours_below_25c_by_year", "hours_below_15c_drybulb", "hours_below_20c_drybulb", "hours_below_20c_wetbulb",
+    "hours_above_35c_drybulb", "mean_annual_temp_c", "design_drybulb_0p4_c", "design_wetbulb_0p4_c", "max_drybulb_c",
+    "nsrdb_location_id", "nsrdb_lat", "nsrdb_lon", "nsrdb_elevation_m", "climate_years", "climate_source",
+    "climate_fetched", "climate_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
-                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS}
+                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
+                 "climate": CLIMATE_COLUMNS}
 BATCH = 100
 
 

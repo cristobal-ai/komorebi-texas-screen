@@ -22,7 +22,7 @@ import pandas as pd
 from pipeline.common import DATA_DIR, load_config
 
 log = logging.getLogger(__name__)
-LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber")
+LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate")
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -195,10 +195,14 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
         .where(has_tx, np.nan), D["distance_to_345kv_sub_mi"]["max"])
     put("load_pocket", pd.Series(np.nan, index=df.index), D["load_pocket_proximity"]["max"], "not_built")
 
-    # E — thermal & cooling: no layer built yet -------------------------------------------------------------------------
+    # E — thermal & cooling: climate layer (NSRDB); soils and wells not built yet --------------------------------------
     E = s["E_thermal_cooling"]
-    for comp, key in (("lambda", "soil_lambda_w_mk"), ("drill", "drillability"), ("hours25", "hours_below_25c_drybulb"),
-                      ("water", "depth_to_water_ft")):
+    h25 = E["hours_below_25c_drybulb"]
+    if "hours_below_25c_drybulb" in df.columns:
+        put("hours25", df["hours_below_25c_drybulb"].map(lambda v: band(v, h25["bands"])), h25["max"])
+    else:
+        put("hours25", pd.Series(np.nan, index=df.index), h25["max"], "not_built")
+    for comp, key in (("lambda", "soil_lambda_w_mk"), ("drill", "drillability"), ("water", "depth_to_water_ft")):
         put(comp, pd.Series(np.nan, index=df.index), E[key]["max"], "not_built")
     out["thermal_response_test_required"] = None          # set once the SSURGO λ layer exists (λ < 1.0 W/m·K)
 

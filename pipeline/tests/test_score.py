@@ -68,6 +68,16 @@ def test_missing_metrics_score_neutral_and_lower_completeness(cfg):
     assert set(notes["not_built"]) >= {"lambda", "load_pocket"}
 
 
+def test_hours_below_25c_scored_from_climate_layer(cfg):
+    rows = [plant(eia_id=1, hours_below_25c_drybulb=6200.0), plant(eia_id=2, hours_below_25c_drybulb=4500.0),
+            plant(eia_id=3, hours_below_25c_drybulb=3900.0), plant(eia_id=4, hours_below_25c_drybulb=np.nan)]
+    out, notes = run(cfg, rows)
+    o = out.set_index("eia_id")
+    assert list(o["pts_hours25"]) == [3, 1, 0, 1.5]
+    assert "hours25" not in (o.loc[1, "missing_inputs"] or "") and "hours25" in o.loc[4, "missing_inputs"]
+    assert "hours25" not in notes["not_built"]
+
+
 def test_no_345_within_radius_is_data_not_missing(cfg):
     out, _ = run(cfg, [plant(eia_id=1, dist_345kv_sub_mi=np.nan), plant(eia_id=2, transmission_source=None, dist_345kv_sub_mi=np.nan)])
     o = out.set_index("eia_id")

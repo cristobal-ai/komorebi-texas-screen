@@ -23,6 +23,7 @@ type Layers = {
   gas: Record<string, string | number | boolean | null> | null;
   flood: Record<string, string | number | boolean | null> | null;
   fiber: Record<string, string | number | boolean | null> | null;
+  climate: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -125,16 +126,25 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
-  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data, fiber: fbRes.data };
+  const L: Layers = {
+    transmission: trRes.data,
+    parcels: pcRes.data,
+    gas: gasRes.data,
+    flood: flRes.data,
+    fiber: fbRes.data,
+    climate: clRes.data,
+  };
+  const C = L.climate;
 
   const flags: string[] = [];
   if (L.flood?.flood_flag)
@@ -283,6 +293,34 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
               L.flood && L.flood.flood_status === "ok"
                 ? `zones ${text(t(L.flood.flood_zones))}; 0.2%: ${pct(n(L.flood.x500_share), 1)}; floodway ${pct(n(L.flood.floodway_share), 1)}`
                 : undefined,
+            ],
+          ]}
+        />
+        <Section
+          title={`Climate (NSRDB${C ? ` ${text(t(C.climate_years))}` : ""})`}
+          rows={[
+            [
+              "Hours below 25 °C dry-bulb",
+              C ? `${num(n(C.hours_below_25c_drybulb), 0)} h/yr` : "—",
+              C ? `mean of the years (scored); worst year ${num(n(C.hours_below_25c_drybulb_min), 0)} · TMY ${num(n(C.hours_below_25c_drybulb_tmy), 0)}` : undefined,
+            ],
+            ["By year", text(t(C?.hours_below_25c_by_year))],
+            [
+              "Hours below 20 / 15 °C",
+              C ? `${num(n(C.hours_below_20c_drybulb), 0)} / ${num(n(C.hours_below_15c_drybulb), 0)} h/yr` : "—",
+            ],
+            ["Hours below 20 °C wet-bulb", C ? `${num(n(C.hours_below_20c_wetbulb), 0)} h/yr` : "—", "Stull (2011) from temperature and humidity"],
+            ["Hours above 35 °C", C ? `${num(n(C.hours_above_35c_drybulb), 0)} h/yr` : "—", "dry-cooler derate hours"],
+            [
+              "Design dry-bulb / wet-bulb (0.4%)",
+              C ? `${num(n(C.design_drybulb_0p4_c))} / ${num(n(C.design_wetbulb_0p4_c))} °C` : "—",
+              C ? `max ${num(n(C.max_drybulb_c))} °C` : undefined,
+            ],
+            ["Mean annual temperature", C ? `${num(n(C.mean_annual_temp_c))} °C` : "—", "≈ undisturbed ground temperature below ~10 m"],
+            [
+              "NSRDB cell",
+              C ? `${num(n(C.nsrdb_lat), 2)}, ${num(n(C.nsrdb_lon), 2)} · ${num(n(C.nsrdb_elevation_m), 0)} m` : "—",
+              C ? `confidence ${text(t(C.climate_confidence))} (modelled MERRA-2 temperature, ~4 km cell)` : undefined,
             ],
           ]}
         />
