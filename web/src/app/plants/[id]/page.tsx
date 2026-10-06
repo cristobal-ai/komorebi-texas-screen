@@ -40,6 +40,7 @@ const OFFTAKE_LABEL: Record<string, string> = {
   long_contract_non_ig: "long contract, buyer not investment grade",
   long_contract_unknown_credit: "long contract, buyer credit not determined",
   utility_owned: "utility-owned (self-supply)",
+  affiliate: "sold to the owner's own affiliate (re-papered in a sale)",
   unknown: "not found in public sources (scored neutral)",
 };
 
@@ -49,7 +50,9 @@ function OfftakeNote({ s }: { s: Score }) {
   const terms = [
     s.offtake_type && s.offtake_type !== status ? s.offtake_type.replace("_", " ") : null,
     s.offtake_counterparty,
-    s.offtake_contract_end ? `ends ${s.offtake_contract_end}${typeof s.offtake_years_left === "number" ? ` (${num(s.offtake_years_left, 1)} yr)` : ""}` : null,
+    s.offtake_contract_end
+      ? `ends ${s.offtake_contract_end}${s.offtake_end_basis === "assumed" ? " (assumed)" : ""}${typeof s.offtake_years_left === "number" ? `, ${num(s.offtake_years_left, 1)} yr left` : ""}`
+      : null,
   ].filter(Boolean);
   return (
     <>
@@ -66,6 +69,7 @@ function OfftakeNote({ s }: { s: Score }) {
         </>
       )}
       .
+      {s.offtake_flags && <span className="text-amber-700 dark:text-amber-400"> ⚑ {s.offtake_flags}.</span>}
     </>
   );
 }
@@ -542,7 +546,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
       <MonthlyCharts rows={months} excluded={allMonths.length - months.length} />
       <p className="mt-6 text-xs text-neutral-500">
         Low capture rate, high curtailment and older modules are price signals and score higher; they are never filtered
-        out. Inputs with no data and the offtake status (no public source) score half their points; soil λ is shown,
+        out. Inputs with no data score half their points; soil λ is shown,
         not scored.
       </p>
     </main>

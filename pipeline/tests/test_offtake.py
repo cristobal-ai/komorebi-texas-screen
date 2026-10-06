@@ -21,6 +21,7 @@ def row(eia_id, typ="ppa", ig="yes", end="2040", **kw):
     return {"eia_id": eia_id, "plant_name": f"P{eia_id}", "offtake_type": typ, "counterparty": "Buyer",
             "counterparty_ig": ig, "contract_start": "2018", "contract_end": end, "share_contracted": None,
             "source_url": "https://example.org", "source_date": "2026-03", "confidence": "high", "notes": None,
+            "contract_end_basis": None, "flag": None,
             "verified_by": None, "verified_on": None} | kw
 
 
@@ -80,3 +81,28 @@ def test_score_uses_table_and_counts_completeness(spec):
     assert "offtake" not in (o.loc[1, "missing_inputs"] or "") and "offtake" in o.loc[2, "missing_inputs"]
     assert list(o["offtake_status"]) == ["merchant", "unknown", "unknown"]
     assert list(o["offtake_confidence"]) == ["high", "unknown", "unknown"]
+
+
+def test_affiliate_assumed_end_and_flags(spec):
+    cod = pd.Series({1: pd.Timestamp("2018-03-01"), 2: pd.Timestamp("2020-06-01"), 3: pd.Timestamp("2019-01-01"),
+                     4: pd.Timestamp("2019-01-01"), 5: pd.Timestamp("2019-01-01")})
+    df = table([row(1, end=None), row(2, typ="hedge", end=None), row(3, typ="affiliate", ig=None, end=None),
+                row(4, end="2032", share_contracted=0.2, counterparty="Unnamed company", ig="unknown", confidence="low"),
+                row(5, flag="buyer in bankruptcy")])
+    out = ot.classify(df, spec, ASOF, cod).set_index("eia_id")
+    assert out.loc[1, "offtake_contract_end"] == "2033-03" and out.loc[1, "offtake_end_basis"] == "assumed"
+    assert out.loc[1, "offtake_status"] == "long_contract_ig"                       # 2018 + 15 = 2033: 6.4 yr left
+    assert out.loc[2, "offtake_contract_end"] == "2032-06" and out.loc[2, "offtake_status"] == "long_contract_ig"
+    assert out.loc[3, "offtake_status"] == "affiliate" and out.loc[3, "offtake_pts"] == spec["affiliate"]
+    f4 = out.loc[4, "offtake_flags"]
+    for needle in ("only 20% of output", "counterparty not named", "crosses the 5-yr line", "low-confidence source"):
+        assert needle in f4
+    assert "assumed COD + 15 yr" in out.loc[1, "offtake_flags"] and "assumed COD + 12 yr" in out.loc[2, "offtake_flags"]
+    assert out.loc[5, "offtake_flags"] == "buyer in bankruptcy"
+
+
+def test_committed_table_is_valid(spec):
+    path = ot.table_path(spec)
+    if not path.exists():
+        pytest.skip("data/offtake.csv not created yet")
+    assert ot.validate(ot.read_table(path)) == []

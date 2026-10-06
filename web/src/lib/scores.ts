@@ -48,6 +48,8 @@ export type Score = {
   offtake_years_left?: number | null;
   offtake_source_url?: string | null;
   offtake_source_date?: string | null;
+  offtake_end_basis?: string | null;
+  offtake_flags?: string | null;
   fixed_cost_est_usd: number | null;
   fixed_cost_includes_fiber: boolean | null;
   fixed_cost_per_kw_it: number | null;

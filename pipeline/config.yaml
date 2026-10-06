@@ -312,6 +312,11 @@ scoring:
       long_non_ig_ppa: 1       # ... not investment grade or unrated
       long_unknown_credit: 0.5 # ... credit not determined (between the two)
       utility_owned: 0         # utility / municipal / coop self-supply: the hardest to acquire
+      # Claude's criteria (owner-delegated 6 Oct 2026: "use your criteria; when in doubt flag it in the database"):
+      affiliate: 3             # offtake by the owner's own affiliate (Vistra retail, Oxy, bp trading): re-papered in a sale
+      assumed_term_years: {ppa: 15, hedge: 12}   # contract with no published end: COD + this, flagged 'assumed'
+      flag_share_below: 0.5    # flag when less than this share of output is publicly contracted
+      flag_years_near_line: 1  # flag when years left is within this of short_years
       unknown: 2               # no row / nothing found / contract end not published: neutral, in missing_inputs
       year_only_end_month: 7   # a contract_end given as a year is read as 1 July of that year
 
