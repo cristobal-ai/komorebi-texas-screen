@@ -16,6 +16,7 @@ import {
 } from "@/lib/plants";
 import { SECTIONS, missingLabels, type Score } from "@/lib/scores";
 import MonthlyCharts from "./monthly-charts";
+import PrintButton from "@/components/print-button";
 
 type Layers = {
   transmission: Record<string, string | number | boolean | null> | null;
@@ -88,6 +89,78 @@ function ScoreSection({ s }: { s: Score }) {
 export const dynamic = "force-dynamic";
 
 type Row = [label: string, value: string, note?: string];
+
+type Caveat = { title: string; status: "applies" | "required" | "check" | "not flagged"; text: string };
+
+/** Brief §6 caveat flags (config `caveat_flags`, every dossier) plus the two plant-level tax flags: seven in all. */
+function caveats(p: Plant, s: Score | null): Caveat[] {
+  const west = s?.region === "west_texas";
+  return [
+    {
+      title: "Load import capability",
+      status: "applies",
+      text: "Not screenable from public data: a generation interconnection agreement confers export rights only. Import at this POI needs an ERCOT screening study.",
+    },
+    {
+      title: "SB6 large-load risk",
+      status: p.sb6_review_required ? "required" : "applies",
+      text: `Planned facility load ${num(p.planned_load_mw)} MW (firm IT ${num(p.firm_it_mw)} MW × PUE, at the plant's ILR ${num(p.ilr, 2)}); ${p.sb6_review_required ? "at or above" : "below"} the large-load threshold in pipeline/config.yaml. ERCOT may curtail large loads before and during grid emergencies: an underwriting variable, not a footnote.`,
+    },
+    {
+      title: "Mineral estate",
+      status: west ? "required" : "check",
+      text: `${west ? "West Texas / Permian site: " : ""}the mineral estate is dominant in Texas. Severed minerals without a recorded surface waiver or subordination keep implied surface access — a deal-killer that only a title chain can clear.`,
+    },
+    {
+      title: "Behind-the-meter configuration",
+      status: "applies",
+      text: "Metering and registration for load behind an existing generator's POI are unsettled and SB6 may reshape them: verify current ERCOT protocol status at the time of use.",
+    },
+    {
+      title: "Chapter 313 / JETI abatement",
+      status: "check",
+      text: `${text(p.county)} County: abatement status, taxing units and expiry are not screened. The step-up at expiry is often mismodelled by sellers.`,
+    },
+    {
+      title: "Tax-equity consent",
+      status: p.tax_equity_consent_likely ? "applies" : "not flagged",
+      text: p.tax_equity_consent_likely
+        ? `COD ${yearMonth(p.cod_first)} (2019 or later): a tax-equity partnership is likely still in place; its consent is needed for a sale or a change of use.`
+        : `COD ${yearMonth(p.cod_first)}: before the 2019 cut-off used for this flag; confirm in diligence.`,
+    },
+    {
+      title: "ITC recapture window",
+      status: p.itc_recapture_open ? "applies" : "not flagged",
+      text: p.itc_recapture_open
+        ? "COD within the last 5 years: a disposition or change of use may recapture part of the investment tax credit."
+        : "COD more than 5 years ago: the 5-year ITC recapture window has closed (confirm the placed-in-service dates).",
+    },
+  ];
+}
+
+const CAVEAT_STYLE: Record<Caveat["status"], string> = {
+  required: "border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-300",
+  applies: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  check: "border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  "not flagged": "border-neutral-300 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400",
+};
+
+function CaveatsSection({ items }: { items: Caveat[] }) {
+  return (
+    <section className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Caveats (brief §6, every site)</h2>
+      <ul className="mt-2 space-y-2 text-sm">
+        {items.map((c) => (
+          <li key={c.title} className="grid grid-cols-[minmax(12rem,auto)_6rem_1fr] items-baseline gap-x-3">
+            <span className="font-medium">{c.title}</span>
+            <span className={`rounded border px-1.5 text-center text-xs ${CAVEAT_STYLE[c.status]}`}>{c.status}</span>
+            <span className="text-neutral-700 dark:text-neutral-300">{c.text}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function Section({ title, rows }: { title: string; rows: Row[] }) {
   return (
@@ -177,9 +250,16 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6">
-      <Link href="/" className="text-sm text-neutral-500 hover:underline">
-        ← All plants
-      </Link>
+      <div className="flex items-center justify-between print:hidden">
+        <Link href="/" className="text-sm text-neutral-500 hover:underline">
+          ← All plants
+        </Link>
+        <PrintButton />
+      </div>
+      <p className="hidden text-xs text-neutral-500 print:block">
+        Komorebi Texas Screen · site dossier · printed {new Date().toISOString().slice(0, 10)} · data run {p.run_id}
+        {score ? ` · scores ${score.run_id}` : ""} · screening estimates from public data, not diligence findings
+      </p>
       <h1 className="mt-2 text-2xl font-semibold">{p.plant_name}</h1>
       <p className="text-sm text-neutral-600 dark:text-neutral-400">
         EIA {p.eia_id} · {text(p.county)} County · {text(p.operator)} · {text(p.tier)} ·{" "}
@@ -197,6 +277,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
       )}
 
       {score && <ScoreSection s={score} />}
+      <CaveatsSection items={caveats(p, score)} />
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <Section
@@ -279,6 +360,11 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
               L.parcels ? `status ${text(t(L.parcels.parcel_status))}; headroom ${pct(n(L.parcels.headroom_pct_unified), 0)} with same-owner land` : undefined,
             ],
             ["Land control", L.parcels ? yesNo(L.parcels.unified_land_control as boolean | null) : "—", text(t(L.parcels?.host_owners))],
+            [
+              "Host parcel IDs",
+              text(t(L.parcels?.host_parcel_ids)?.split(";").join(", ") ?? null),
+              L.parcels ? `${text(t(L.parcels.county ?? p.county))} County appraisal district, largest first; StratMap ${text(t(L.parcels.parcel_vintage))}` : undefined,
+            ],
             [
               "Gas transmission line",
               L.gas ? (n(L.gas.dist_gas_transmission_mi) !== null ? `${num(n(L.gas.dist_gas_transmission_mi))} mi` : `none within ${num(n(L.gas.gas_search_mi), 0)} mi`) : "—",

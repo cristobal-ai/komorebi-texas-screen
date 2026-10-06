@@ -258,6 +258,13 @@ export default function PlantTable({ rows }: { rows: ScoredRow[] }) {
         >
           Weights{isDefaultWeights(weights) ? " (brief defaults)" : " (custom)"} {showWeights ? "▴" : "▾"}
         </button>
+        <a
+          href={`/export${isDefaultWeights(weights) ? "" : `?${new URLSearchParams(Object.entries(weights).map(([k, v]) => [k, String(v)]))}`}`}
+          className="ml-2 inline-block rounded border border-neutral-300 px-3 py-1 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
+          title="Every pass and review plant with every metric, the monthly ERCOT history and an About sheet; custom weights add score_custom and rank_custom"
+        >
+          Export XLSX
+        </a>
         {showWeights && (
           <div className="mt-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
             <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">

@@ -133,10 +133,20 @@ def test_zipped_shapefile_is_discovered(tmp_path):
     assert len(found) == 1 and found[0][0].startswith("/vsizip/")
 
 
+def test_host_parcel_ids_largest_first():
+    # two host parcels under the array: id 1 (larger) before id 0; id 2 is a neighbour, not a host
+    cfg = __import__("pipeline.common", fromlist=["load_config"]).load_config()
+    parcels = frame([(-100, -100, 300, 1000, "A", "F1", 1), (300, -100, 1100, 1000, "B", "F1", 1), (2000, 0, 2100, 100, "C", "F1", 1)])
+    row = pc.analyze(ARRAY, parcels, cfg, 100.0)
+    assert row["host_parcel_ids"] == "1;0"
+
+
 def test_loader_columns_match_migration():
     sql = next(Path("supabase/migrations").glob("*_layers_parcels.sql")).read_text(encoding="utf-8")
     body = re.search(r"create table public\.layers_parcels \((.*?)\n\);", sql, re.S).group(1)
     cols = [m.group(1) for line in body.splitlines() if (m := re.match(r"\s*([a-z_0-9]+)\s", line.split("--")[0]))]
+    for f in sorted(Path("supabase/migrations").glob("*.sql")):        # later `alter table layers_parcels add column`s
+        cols += re.findall(r"alter table public\.layers_parcels\s+add column (?:if not exists )?([a-z_0-9]+)", f.read_text(encoding="utf-8"))
     assert [c for c in cols if c != "loaded_at"] == ld.PARCELS_COLUMNS
     row = pc.analyze(ARRAY, frame([(-500, -500, 1500, 1500, "ACME SOLAR LLC", "F1", 1)]), __import__("pipeline.common", fromlist=["load_config"]).load_config(), 100.0)
     row["eia_id"] = 1
