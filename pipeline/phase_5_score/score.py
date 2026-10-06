@@ -198,10 +198,14 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     # E — thermal & cooling: soils (SSURGO), climate (NSRDB) and wells (TWDB) layers ------------------------------------
     # a layer present but no value for a plant (e.g. < min_logs driller logs within 10 mi) = no data: neutral
     E = s["E_thermal_cooling"]
-    for comp, key, col in (("lambda", "soil_lambda_w_mk", "soil_lambda_w_mk"),
-                           ("hours25", "hours_below_25c_drybulb", "hours_below_25c_drybulb"),
-                           ("drill", "drillability", E["drillability"]["metric"]),
-                           ("water", "depth_to_water_ft", "depth_to_water_ft")):
+    e_inputs = [("lambda", "soil_lambda_w_mk", "soil_lambda_w_mk"),
+                ("hours25", "hours_below_25c_drybulb", "hours_below_25c_drybulb"),
+                ("drill", "drillability", E["drillability"]["metric"]),
+                ("water", "depth_to_water_ft", "depth_to_water_ft")]
+    if not E["soil_lambda_w_mk"].get("scored", True):     # owner decision 5 Oct 2026: lambda shown, not scored
+        e_inputs = e_inputs[1:]
+        out["pts_lambda"] = np.nan                         # null in plant_scores; adds nothing to score_E or completeness
+    for comp, key, col in e_inputs:
         if col in df.columns:
             put(comp, df[col].map(lambda v, b=E[key]["bands"]: band(v, b)), E[key]["max"])
         else:

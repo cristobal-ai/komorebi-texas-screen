@@ -282,7 +282,7 @@ export default function PlantTable({ rows }: { rows: ScoredRow[] }) {
             </div>
             <p className="mt-2 text-xs text-neutral-500">
               Each slider sets a section’s maximum points (F: the maximum penalty). Positive maximum now{" "}
-              {SECTIONS.filter((s) => !s.penalty).reduce((t, s) => t + weights[s.id], 0)} (brief: 100). Ranks recompute
+              {SECTIONS.filter((s) => !s.penalty).reduce((t, s) => t + weights[s.id], 0)} (default 94: the brief’s 100 less soil λ, shown but not scored). Ranks recompute
               over all pass plants.{" "}
               <button onClick={() => setWeights(DEFAULT_WEIGHTS)} className="underline">
                 Reset to brief defaults

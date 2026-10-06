@@ -70,7 +70,7 @@ def test_summary_without_data(cfg):
     assert so.summarize(raw([], mapunits=[]), cfg)["soil_status"] == "no_soil_data"
 
 
-def test_lambda_scored_and_trt_flag(cfg):
+def test_lambda_informative_only_but_sets_trt_flag(cfg):
     base = dict(eia_id=1, plant_name="P", county="Pecos", tier="T1b", ac_mw=200.0, filter_status="pass", lat=31.0, lon=-103.0,
                 metrics_status="ok", capture_rate_potential=0.65, curtailment_pct=0.08, sced_net_cf=0.24, net_ac_cf=0.24,
                 cod_first=pd.Timestamp("2017-06-01"), module_tech="c-Si", tracking_type="single_axis", bifacial_share=np.nan,
@@ -80,9 +80,16 @@ def test_lambda_scored_and_trt_flag(cfg):
     rows = [base | {"eia_id": i, "soil_lambda_w_mk": v} for i, v in enumerate([2.1, 1.6, 1.2, 0.8, np.nan], 1)]
     out, notes = sc.score(pd.DataFrame(rows), cfg)
     o = out.set_index("eia_id")
-    assert list(o["pts_lambda"]) == [6, 4, 2, 0, 3]
+    # owner decision 5 Oct 2026: no points, no completeness weight, every plant's E unaffected by lambda
+    assert o["pts_lambda"].isna().all() and o["score_E"].nunique() == 1
+    assert "lambda" not in notes["max_points"] and notes["positive_max_total"] == 94
     assert list(o["thermal_response_test_required"].iloc[:4]) == [False, False, False, True]
-    assert pd.isna(o.loc[5, "thermal_response_test_required"]) and "lambda" not in notes.get("not_built", [])
+    assert pd.isna(o.loc[5, "thermal_response_test_required"])
+    # and the bands come back if the config flag is flipped
+    on = {**cfg, "scoring": {**cfg["scoring"], "E_thermal_cooling": {**cfg["scoring"]["E_thermal_cooling"],
+          "soil_lambda_w_mk": {**cfg["scoring"]["E_thermal_cooling"]["soil_lambda_w_mk"], "scored": True}}}}
+    o2 = sc.score(pd.DataFrame(rows), on)[0].set_index("eia_id")
+    assert list(o2["pts_lambda"]) == [6, 4, 2, 0, 3]
 
 
 def test_loader_columns_match_migration():

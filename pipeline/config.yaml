@@ -260,7 +260,7 @@ sb6:
   # sb6_review_required = planned_load_mw >= large_load_threshold_mw
 
 scoring:
-  max_total: 100
+  max_total: 100               # brief §5; 94 while soil lambda is informative only (E_thermal_cooling.soil_lambda_w_mk.scored)
   # quantile (decision 3 Oct 2026, plan §3 change 5): cut points are the fleet quartiles of the metric over plants with
   # metrics_status = ok, computed at scoring time from plant_metrics. Fleet at the first 30-month run: capture_rate_potential
   # q25/q50/q75 = 0.61/0.65/0.69 (range 0.33-0.84), curtailment_pct 4.6%/7.7%/15.0% (max 28.8%). The fixed bands would
@@ -327,15 +327,19 @@ scoring:
       max: 5
       source: manual           # hand-maintained table until PUCT load-queue transparency (Dec 2026)
 
-  E_thermal_cooling:           # 15 pts — Komorebi-specific
+  E_thermal_cooling:           # 15 pts in the brief; 9 while lambda is informative only — Komorebi-specific
     soil_lambda_w_mk:
+      # Owner decision 5 Oct 2026: informative only. SSURGO lambda (top 2 m, Cote & Konrad) clusters at 1.1-1.4 W/m-K, so
+      # these bands put 67 of 76 plants on 2 points; it is shown and drives thermal_response_test_required, but scores
+      # nothing (pts_lambda null; Section E max 9, positive total 94). Set scored: true to bring the bands back.
+      scored: false
       max: 6
       bands: [{gte: 2.0, pts: 6}, {gte: 1.5, pts: 4}, {gte: 1.0, pts: 2}, {else: 0}]
       thermal_response_test_flag_below: 1.0
     drillability:
       max: 4
       # metric: thick_hard_layer_share (wells layer) = share of nearby driller logs with >= thick_layer_ft of caliche /
-      # gypsum / anhydrite in the top bore_depth_ft. Bands proposed 5 Oct 2026 (brief gives the criterion, not the cut points).
+      # gypsum / anhydrite in the top bore_depth_ft. Bands confirmed by the owner 5 Oct 2026 (brief gives only the criterion).
       metric: thick_hard_layer_share
       bands: [{lt: 0.10, pts: 4}, {lt: 0.25, pts: 3}, {lt: 0.50, pts: 2}, {lt: 0.75, pts: 1}, {else: 0}]
     hours_below_25c_drybulb:

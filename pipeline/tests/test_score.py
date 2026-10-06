@@ -63,9 +63,9 @@ def test_missing_metrics_score_neutral_and_lower_completeness(cfg):
     p3 = out.set_index("eia_id").loc[3]
     assert p3["pts_capture"] == 6 and p3["pts_curtailment"] == 4 and p3["pts_cf_benchmark"] == 3
     assert "capture" in p3["missing_inputs"] and p3["data_completeness"] < out.set_index("eia_id").loc[1, "data_completeness"]
-    # layers not built yet: neutral half points
-    assert p3["score_E"] == 7.5 and p3["pts_load_pocket"] == 2.5
-    assert set(notes["not_built"]) >= {"lambda", "load_pocket"}
+    # layers not built yet: neutral half points (E max 9: lambda is informative only)
+    assert p3["score_E"] == 4.5 and p3["pts_load_pocket"] == 2.5
+    assert set(notes["not_built"]) >= {"hours25", "load_pocket"}
 
 
 def test_hours_below_25c_scored_from_climate_layer(cfg):
@@ -87,7 +87,7 @@ def test_drillability_and_depth_to_water_from_wells_layer(cfg):
     o = out.set_index("eia_id")
     assert list(o["pts_drill"]) == [4, 2, 0, 2] and list(o["pts_water"]) == [2, 1, 0, 1]
     assert "drill" in o.loc[4, "missing_inputs"] and "drill" not in (o.loc[1, "missing_inputs"] or "")
-    assert {"drill", "water"}.isdisjoint(notes["not_built"]) and "lambda" in notes["not_built"]
+    assert {"drill", "water"}.isdisjoint(notes["not_built"])
 
 
 def test_no_345_within_radius_is_data_not_missing(cfg):
