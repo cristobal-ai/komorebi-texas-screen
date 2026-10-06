@@ -89,6 +89,7 @@ Each layer has its own script, raw cache and database table, and is measured fro
 | Climate | NSRDB hourly 2021–2025: hours below 25 °C dry-bulb (5-year mean, normalised to 8,760 h); also wet-bulb hours, hours above 35 °C, 0.4% design temperatures, TMY | hours below 25 °C (E) | medium |
 | Wells | share of TWDB driller logs within 3 mi (6, then 10 mi if fewer than 5) with ≥ 20 ft of caliche, gypsum or anhydrite in the top 500 ft; median static water level | drillability, depth to water (E) | medium / low |
 | Soils | SSURGO thermal conductivity, Côté & Konrad (2005) at field capacity, depth-weighted over 0–2 m; restrictive layers | no — informative (owner decision) | medium / low |
+| Load pocket | distance to the nearest operating, under-construction or announced data center or ≥ 75 MW flexible load in a hand-maintained, owner-reviewed table (51 projects) | load-pocket proximity (D) | manual |
 
 **Known biases.** NSRDB temperature is MERRA-2 reanalysis and reads about 1.5–2 °C warm against station normals in Pecos County; it understates cool hours, so the climate points are conservative (accepted by the owner). Driller logs are free text; caliche on the High Plains is drillable with air rotary — the drillability score follows the brief's refusal-layer criterion and is a screen. SSURGO describes the top 2 m only, while a loop bore runs ~150 m, mostly through rock.
 
@@ -102,13 +103,13 @@ Scores are stored as components, section sub-scores (A–F) and a total, so the 
 
 **C — Physical envelope (20).** Host-parcel acres per MW AC: > 14 → 8, > 10 → 6, > 7 → 3, else 0. Expansion headroom with same-owner land: > 50% → 7, > 20% → 4, else 0. Unified land control (one owner ≥ 90% of host acres) 5.
 
-**D — Electrical (20).** POI voltage: ≥ 345 kV 10, ≥ 138 kV 6, ≥ 69 kV 2, else 0. Distance to a 345 kV substation: < 5 mi 5, < 15 mi 2, else 0 (none within 40 mi is measured data: 0). Load-pocket proximity 5: hand-maintained table pending the PUCT large-load transparency rule; scored neutral.
+**D — Electrical (20).** POI voltage: ≥ 345 kV 10, ≥ 138 kV 6, ≥ 69 kV 2, else 0. Distance to a 345 kV substation: < 5 mi 5, < 15 mi 2, else 0 (none within 40 mi is measured data: 0). Load-pocket proximity 5: distance from the array to the nearest qualifying large load in a hand-maintained table (ERCOT's large-load queue is not a dataset until the PUCT transparency rule): < 10 mi 5, < 25 mi 3, < 50 mi 1, else 0; announced projects score half; the better of the two counts. Qualifying: data-center campuses with a named site and a published MW figure, and other flexible loads (crypto, hydrogen, industrial) of at least 75 MW. The table (51 qualifying projects, reviewed by the owner on 6 October 2026) is built from company releases, filings and trade press, one source per row; locations are town or county centres, so distances carry a few miles of error (`load_pocket_confidence = manual`).
 
 **E — Thermal & cooling (9).** Drillability (thick-layer share < 10% → 4, < 25% → 3, < 50% → 2, < 75% → 1, else 0; bands confirmed by the owner). Hours below 25 °C: ≥ 6,000 → 3, ≥ 5,000 → 2, ≥ 4,000 → 1. Depth to water: ≥ 200 ft 2, ≥ 100 ft 1. Soil λ (brief bands 2.0 / 1.5 / 1.0 W/m·K for 6 points) is shown but not scored: near-surface estimates cluster at 1.1–1.4 W/m·K, so the bands did not discriminate. A λ below 1.0 sets `thermal_response_test_required`.
 
 **F — Fixed-cost drag (0 to −15).** Fixed costs of $2.4 M (ERCOT study $250k, title and mineral $150k, substation modification $1.5 M, legal and transaction $500k) plus the fiber lateral at $100k per mile, divided by firm IT kW: < $100/kW 0, < $250 −5, < $450 −10, else −15.
 
-**Missing data.** An input with no data, or whose layer is not built, scores half its points (neutral) and lowers `data_completeness`, the share of the positive points that rest on real data; `missing_inputs` names them. A measured "none within radius" is data, not missing. Columns ending `_confidence` or `_source`, the flood flag, gas, climate extras and soil λ are displayed, never scored. Review plants are scored but not ranked. As of 6 October 2026 the completeness median is 90.4% (load pocket and offtake remain neutral).
+**Missing data.** An input with no data, or whose layer is not built, scores half its points (neutral) and lowers `data_completeness`, the share of the positive points that rest on real data; `missing_inputs` names them. A measured "none within radius" is data, not missing. Columns ending `_confidence` or `_source`, the flood flag, gas, climate extras and soil λ are displayed, never scored. Review plants are scored but not ranked. As of 6 October 2026 the completeness median is 95.7% (offtake remains neutral).
 
 ## 9. Caveats on every site
 
@@ -126,7 +127,7 @@ Scores are stored as components, section sub-scores (A–F) and a total, so the 
 - EIA-923 is monthly for a sample of plants and annual for the rest; `cf_series_resolution` records which.
 - ≥ 10 MW AC does not guarantee SCED telemetry; `sced_coverage` records what the disclosure returned.
 - Long-haul fiber routes are not public: the fiber layer is a corridor proxy (`fiber_confidence = low`).
-- ERCOT's large-load queue is not a downloadable dataset until the PUCT transparency rule lands; the load-pocket input is pending.
+- ERCOT's large-load queue is not a downloadable dataset until the PUCT transparency rule lands; the load-pocket input is a hand-maintained table of announced and operating projects and will miss unannounced loads.
 - 34 of the 76 screened plants (6.2 GW, including the whole Permian) sit in counties with no digital FEMA flood map: flood risk there is unknown, not absent.
 
 ## 11. Reproducibility
