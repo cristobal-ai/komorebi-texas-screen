@@ -25,6 +25,7 @@ PARCELS_COLUMNS = [
     "host_cover_share", "headroom_pct_host", "headroom_pct_unified", "acres_per_mw_parcel", "host_owners",
     "largest_owner_share", "unified_land_control", "land_use_codes", "mkt_value_total", "land_value_per_acre",
     "parcel_vintage", "parcel_source", "parcels_confidence", "run_id",
+    "host_parcel_ids",                 # added by a later migration (ALTER TABLE), hence after run_id
 ]
 GAS_PIPELINES_COLUMNS = [
     "eia_id", "dist_gas_transmission_mi", "gas_transmission_operator", "gas_transmission_system",

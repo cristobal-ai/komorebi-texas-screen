@@ -21,7 +21,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className="min-h-screen bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100">
         {user && (
-          <header className="border-b border-neutral-200 dark:border-neutral-800">
+          <header className="border-b border-neutral-200 print:hidden dark:border-neutral-800">
             <nav className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
               <Link href="/" className="font-semibold">
                 Komorebi Texas Screen
@@ -31,6 +31,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </Link>
               <Link href="/map" className="hover:underline">
                 Map
+              </Link>
+              <Link href="/methodology" className="hover:underline">
+                Methodology
               </Link>
               {isAdmin && (
                 <Link href="/admin/users" className="hover:underline">

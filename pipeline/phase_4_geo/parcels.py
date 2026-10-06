@@ -205,7 +205,8 @@ def analyze(array_geom, parcels: gpd.GeoDataFrame, cfg: dict, ac_mw: float, poin
            "adjacent_same_owner_acres": np.nan, "array_acres_calc": array_m2 / M2_PER_ACRE, "host_cover_share": np.nan,
            "headroom_pct_host": np.nan, "headroom_pct_unified": np.nan, "acres_per_mw_parcel": np.nan, "host_owners": None,
            "largest_owner_share": np.nan, "unified_land_control": None, "land_use_codes": None, "mkt_value_total": np.nan,
-           "land_value_per_acre": np.nan, "parcel_vintage": None, "parcel_source": None, "parcels_confidence": None}
+           "land_value_per_acre": np.nan, "parcel_vintage": None, "parcel_source": None, "parcels_confidence": None,
+           "host_parcel_ids": None}
     if parcels is None or parcels.empty:
         return row
     parcels = parcels.reset_index(drop=True)
@@ -272,6 +273,9 @@ def analyze(array_geom, parcels: gpd.GeoDataFrame, cfg: dict, ac_mw: float, poin
         "parcel_vintage": str(int(years.max())) if len(years) else None,
         "parcel_source": ";".join(sorted({str(x) for x in host["source_file"].dropna()})) or None,
         "parcels_confidence": "low" if point_fallback else ("medium" if (cover < 0.25 or len(host) > 12) else "high"),
+        # appraisal-district property ids of the host parcels, largest first (dossier: "acreage and parcel IDs")
+        "host_parcel_ids": ";".join(dict.fromkeys(str(v).strip() for v in host.assign(_m2=host_m2).sort_values("_m2", ascending=False)["prop_id"]
+                                                  if pd.notna(v) and str(v).strip())) or None,
     })
     return row
 
