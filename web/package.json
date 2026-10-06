@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/gen-methodology.mjs && next dev",
-    "prebuild": "node scripts/gen-methodology.mjs",
+    "dev": "node scripts/gen-methodology.mjs && node scripts/copy-maplibre-worker.mjs && next dev",
+    "prebuild": "node scripts/gen-methodology.mjs && node scripts/copy-maplibre-worker.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
