@@ -63,9 +63,17 @@ SOILS_COLUMNS = [
     "soil_data_share", "restriction_kinds", "restriction_min_depth_cm", "restriction_share", "bedrock_depth_cm_min",
     "soil_source", "soil_fetched", "soil_confidence", "run_id",
 ]
+LOAD_POCKET_COLUMNS = [
+    "eia_id", "dist_load_pocket_firm_mi", "nearest_firm_project", "nearest_firm_kind", "nearest_firm_status",
+    "nearest_firm_mw", "dist_load_pocket_announced_mi", "nearest_announced_project", "nearest_announced_kind",
+    "nearest_announced_mw", "n_projects_within_search", "mw_within_search", "projects_within_search",
+    "load_pocket_location_confidence", "load_pocket_search_mi", "load_pocket_source", "load_pocket_table_date",
+    "load_pocket_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
                  "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
-                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS, "soils": SOILS_COLUMNS}
+                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS, "soils": SOILS_COLUMNS,
+                 "load_pocket": LOAD_POCKET_COLUMNS}
 BATCH = 100
 
 

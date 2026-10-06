@@ -20,9 +20,13 @@ import numpy as np
 import pandas as pd
 
 from pipeline.common import DATA_DIR, load_config
+from pipeline.phase_5_score import offtake
 
 log = logging.getLogger(__name__)
-LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils")
+LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils", "load_pocket")
+
+OFFTAKE_OUT = ["offtake_status", "offtake_type", "offtake_counterparty", "offtake_counterparty_ig", "offtake_contract_end",
+               "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date"]
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -145,10 +149,20 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     put("cf_benchmark", below_pts.map(lambda v: np.nan if pd.isna(v) else
                                       next((float(b["pts"]) for b in cfb if "below_pts_gt" in b and v > b["below_pts_gt"]),
                                            float(cfb[-1]["else"]))), A["cf_vs_benchmark"]["max"])
+    # offtake: hand-maintained data/offtake.csv classified by phase_5_score/offtake.py; unknown → neutral, missing
     off = A["offtake_status"]
-    put("offtake", pd.Series(float(off["unknown"]), index=df.index), off["max"])
-    missing["offtake"] = pd.Series(True, index=df.index)   # scored at the 'unknown' value, but no data behind it
-    out["offtake_confidence"] = "unknown"
+    if "offtake_pts" in df.columns:
+        put("offtake", df["offtake_pts"], off["max"])
+        for c in OFFTAKE_OUT:
+            out[c] = df[c]
+        out["offtake_status"] = df["offtake_status"].fillna("unknown")
+        out["offtake_confidence"] = df["offtake_row_confidence"].where(df["offtake_pts"].notna(), "unknown")
+    else:
+        put("offtake", pd.Series(np.nan, index=df.index), off["max"], "not_built")
+        for c in OFFTAKE_OUT:
+            out[c] = None
+        out["offtake_status"] = "unknown"
+        out["offtake_confidence"] = "unknown"
 
     # B — repowering upside (vintage proxy) ----------------------------------------------------------------------------
     B = s["B_repowering_upside"]
@@ -193,7 +207,16 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     far = D["distance_to_345kv_sub_mi"]["bands"][-1].get("else", 0)
     put("dist_345", dist.map(lambda v: band(v, D["distance_to_345kv_sub_mi"]["bands"])).where(dist.notna(), far)
         .where(has_tx, np.nan), D["distance_to_345kv_sub_mi"]["max"])
-    put("load_pocket", pd.Series(np.nan, index=df.index), D["load_pocket_proximity"]["max"], "not_built")
+    # load pocket (manual table, layer 9): the better of firm-project band and announced_factor × announced band; with the
+    # layer present a null distance = nothing qualifying within its search radius: measured, the else band
+    lp = D["load_pocket_proximity"]
+    if "load_pocket_source" in df.columns:
+        lp_else = lp["bands"][-1].get("else", 0)
+        firm = df["dist_load_pocket_firm_mi"].map(lambda v: band(v, lp["bands"])).fillna(lp_else)
+        ann = df["dist_load_pocket_announced_mi"].map(lambda v: band(v, lp["bands"])).fillna(lp_else) * lp["announced_factor"]
+        put("load_pocket", np.maximum(firm, ann).where(df["load_pocket_source"].notna(), np.nan), lp["max"])
+    else:
+        put("load_pocket", pd.Series(np.nan, index=df.index), lp["max"], "not_built")
 
     # E — thermal & cooling: soils (SSURGO), climate (NSRDB) and wells (TWDB) layers ------------------------------------
     # a layer present but no value for a plant (e.g. < min_logs driller logs within 10 mi) = no data: neutral
@@ -278,6 +301,9 @@ def run() -> Path:
     metrics = pd.read_parquet(mp) if mp.exists() else None
     layers = {n: pd.read_parquet(DATA_DIR / "layers" / f"{n}.parquet") for n in LAYERS
               if (DATA_DIR / "layers" / f"{n}.parquet").exists()}
+    off = offtake.load(cfg["scoring"]["A_acquisition_discount"]["offtake_status"], dt.date.today())
+    if off is not None:
+        layers["offtake"] = off
     log.info("scoring with metrics=%s, layers=%s", metrics is not None, sorted(layers))
     scores, notes = score(assemble(plants, metrics, layers), cfg)
     scores["score_version"] = str(cfg.get("version"))

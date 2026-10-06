@@ -26,6 +26,7 @@ export const LAYER_TABLES: { name: string; label: string }[] = [
   { name: "layers_climate", label: "Climate (NSRDB)" },
   { name: "layers_wells", label: "Wells (TWDB)" },
   { name: "layers_soils", label: "Soils (SSURGO)" },
+  { name: "layers_load_pocket", label: "Load pocket (manual table)" },
 ];
 
 const LEAD = ["rank_overall", "rank_in_tier", "plant_name", "eia_id", "county", "tier", "filter_status", "ac_mw",

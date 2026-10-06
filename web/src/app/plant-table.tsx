@@ -265,6 +265,13 @@ export default function PlantTable({ rows }: { rows: ScoredRow[] }) {
         >
           Export XLSX
         </a>
+        <a
+          href="/export/latest"
+          className="ml-2 text-neutral-600 underline hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+          title="The workbook written to Storage by the last pipeline run (default weights), unchanged since that run"
+        >
+          last run&apos;s copy
+        </a>
         {showWeights && (
           <div className="mt-2 rounded border border-neutral-200 p-3 dark:border-neutral-800">
             <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">

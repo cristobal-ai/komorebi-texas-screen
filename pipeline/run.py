@@ -4,7 +4,7 @@
     python -m pipeline.run --phase 2 --county Pecos   # plant master + Pecos hand-check report
     python -m pipeline.run --phase 1-2 --county Pecos
     python -m pipeline.run --phase 3                  # 3a: ERCOT resource lists + EIA↔ERCOT crosswalk
-    python -m pipeline.run --phase 4 --layer transmission|gas_pipelines|flood|parcels|fiber|climate|wells|soils [--load]   # geo layers (see pipeline/phase_4_geo)
+    python -m pipeline.run --phase 4 --layer transmission|gas_pipelines|flood|parcels|fiber|climate|wells|soils|load_pocket [--load]   # geo layers (see pipeline/phase_4_geo)
     python -m pipeline.run --phase 5 [--load]         # scores from plants + metrics + layers → data/scores.parquet
     python -m pipeline.run --phase 3b                 # 3b: SCED + SPP history → curtailment, capture rate
     python -m pipeline.run --phase 3b --since 2026-07-15 --until 2026-07-15   # one-day probe
@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--until", type=dt.date.fromisoformat, default=None, help="3b: last operating day")
     ap.add_argument("--no-fetch", action="store_true", help="3b: compute from cached days only")
     ap.add_argument("--retry-missing", action="store_true", help="3b: re-fetch days ERCOT previously returned no data for")
-    ap.add_argument("--layer", default="all", help="4: one geo layer (transmission, gas_pipelines, flood, parcels, fiber, climate, wells, soils) or all")
+    ap.add_argument("--layer", default="all", help="4: one geo layer (transmission, gas_pipelines, flood, parcels, fiber, climate, wells, soils, load_pocket) or all")
     ap.add_argument("--load", action="store_true", help="after phase 2 / 4 / 5, write plants / layers / scores to Supabase")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -84,11 +84,11 @@ def main(argv: list[str] | None = None) -> None:
                 score_load.run()
         elif n == 4:
             from pipeline.phase_4_geo import load as layer_load
-            from pipeline.phase_4_geo import climate, fiber, flood, gas_pipelines, parcels, soils, transmission, wells
+            from pipeline.phase_4_geo import climate, fiber, flood, gas_pipelines, load_pocket, parcels, soils, transmission, wells
 
             layers = {"transmission": transmission.run, "gas_pipelines": gas_pipelines.run, "flood": flood.run,
                       "parcels": parcels.run, "fiber": fiber.run, "climate": climate.run, "wells": wells.run,
-                      "soils": soils.run}
+                      "soils": soils.run, "load_pocket": load_pocket.run}
             names = sorted(layers) if args.layer == "all" else [args.layer]
             unknown = [x for x in names if x not in layers]
             if unknown:
