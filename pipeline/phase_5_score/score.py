@@ -22,7 +22,7 @@ import pandas as pd
 from pipeline.common import DATA_DIR, load_config
 
 log = logging.getLogger(__name__)
-LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils")
+LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils", "load_pocket")
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -193,7 +193,16 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     far = D["distance_to_345kv_sub_mi"]["bands"][-1].get("else", 0)
     put("dist_345", dist.map(lambda v: band(v, D["distance_to_345kv_sub_mi"]["bands"])).where(dist.notna(), far)
         .where(has_tx, np.nan), D["distance_to_345kv_sub_mi"]["max"])
-    put("load_pocket", pd.Series(np.nan, index=df.index), D["load_pocket_proximity"]["max"], "not_built")
+    # load pocket (manual table, layer 9): the better of firm-project band and announced_factor × announced band; with the
+    # layer present a null distance = nothing qualifying within its search radius: measured, the else band
+    lp = D["load_pocket_proximity"]
+    if "load_pocket_source" in df.columns:
+        lp_else = lp["bands"][-1].get("else", 0)
+        firm = df["dist_load_pocket_firm_mi"].map(lambda v: band(v, lp["bands"])).fillna(lp_else)
+        ann = df["dist_load_pocket_announced_mi"].map(lambda v: band(v, lp["bands"])).fillna(lp_else) * lp["announced_factor"]
+        put("load_pocket", np.maximum(firm, ann).where(df["load_pocket_source"].notna(), np.nan), lp["max"])
+    else:
+        put("load_pocket", pd.Series(np.nan, index=df.index), lp["max"], "not_built")
 
     # E — thermal & cooling: soils (SSURGO), climate (NSRDB) and wells (TWDB) layers ------------------------------------
     # a layer present but no value for a plant (e.g. < min_logs driller logs within 10 mi) = no data: neutral

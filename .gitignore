@@ -10,6 +10,7 @@ web/.env*.local
 data/*
 !data/README.md
 !data/crosswalk_eia_ercot.csv
+!data/load_pockets.csv
 !data/.gitkeep
 
 # Python

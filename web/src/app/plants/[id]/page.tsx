@@ -27,6 +27,7 @@ type Layers = {
   climate: Record<string, string | number | boolean | null> | null;
   wells: Record<string, string | number | boolean | null> | null;
   soils: Record<string, string | number | boolean | null> | null;
+  loadPocket: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -201,7 +202,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes, soRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes, soRes, lpRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
@@ -211,6 +212,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_wells").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_soils").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_load_pocket").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
   const L: Layers = {
@@ -222,7 +224,9 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     climate: clRes.data,
     wells: wlRes.data,
     soils: soRes.data,
+    loadPocket: lpRes.data,
   };
+  const LP = L.loadPocket;
   const C = L.climate;
   const W = L.wells;
   const S = L.soils;
@@ -366,6 +370,17 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
               L.parcels ? `${text(t(L.parcels.county ?? p.county))} County appraisal district, largest first; StratMap ${text(t(L.parcels.parcel_vintage))}` : undefined,
             ],
             [
+              "Load pocket (manual)",
+              !LP
+                ? "—"
+                : n(LP.dist_load_pocket_firm_mi) !== null
+                  ? `${num(n(LP.dist_load_pocket_firm_mi))} mi to ${text(t(LP.nearest_firm_project))} (${text(t(LP.nearest_firm_status)).replace("_", " ")})`
+                  : `no operating / under-construction load within ${num(n(LP.load_pocket_search_mi), 0)} mi`,
+              LP
+                ? `${n(LP.dist_load_pocket_announced_mi) !== null ? `announced: ${text(t(LP.nearest_announced_project))} ${num(n(LP.dist_load_pocket_announced_mi))} mi (half points) · ` : ""}${n(LP.n_projects_within_search) ?? 0} within ${num(n(LP.load_pocket_search_mi), 0)} mi${n(LP.mw_within_search) ? `, ${num(n(LP.mw_within_search), 0)} MW published` : ""}; hand-maintained table of data centers and ≥ 75 MW flexible loads (${text(t(LP.load_pocket_table_date))}), location ${text(t(LP.load_pocket_location_confidence))}`
+                : undefined,
+            ],
+            [
               "Gas transmission line",
               L.gas ? (n(L.gas.dist_gas_transmission_mi) !== null ? `${num(n(L.gas.dist_gas_transmission_mi))} mi` : `none within ${num(n(L.gas.gas_search_mi), 0)} mi`) : "—",
               L.gas && n(L.gas.dist_gas_transmission_mi) !== null
@@ -490,8 +505,8 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
       <MonthlyCharts rows={months} excluded={allMonths.length - months.length} />
       <p className="mt-6 text-xs text-neutral-500">
         Low capture rate, high curtailment and older modules are price signals and score higher; they are never filtered
-        out. Inputs whose layers are not built yet (soil λ, drillability, climate, water table, load pockets) and the
-        offtake status score half their points until measured.
+        out. Inputs with no data and the offtake status (no public source) score half their points; soil λ is shown,
+        not scored.
       </p>
     </main>
   );

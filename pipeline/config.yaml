@@ -244,6 +244,17 @@ layers:
       county: [county, county_name, cnty_name, countyname]
       year: [tax_year, taxyear, year, data_year, source_year]
 
+  load_pocket:
+    # Hand-maintained table (plan §3: ERCOT's large-load queue is not a dataset until the PUCT transparency rule, due
+    # Dec 2026). One row per project with a source URL; committed like the crosswalk. load_pocket_confidence = manual.
+    # What counts (owner decision 6 Oct 2026): data-center campuses of any size with a named site, plus other large
+    # flexible loads (crypto, hydrogen, industrial) of at least min_load_mw_non_dc. Cancelled rows are kept and ignored.
+    table: data/load_pockets.csv
+    statuses_firm: [operating, under_construction]   # score the full distance band
+    statuses_announced: [announced]                  # score announced_factor × the band (scoring.D_electrical)
+    min_load_mw_non_dc: 75       # SB6 large-load line; non-DC rows with a blank or smaller load_mw do not count
+    search_radius_mi: 50         # beyond this a distance is null ("none within"): measured, 0 points
+
 units:
   m2_per_acre: 4046.8564224
 
@@ -325,7 +336,11 @@ scoring:
       bands: [{lt: 5, pts: 5}, {lt: 15, pts: 2}, {else: 0}]
     load_pocket_proximity:
       max: 5
-      source: manual           # hand-maintained table until PUCT load-queue transparency (Dec 2026)
+      source: manual           # hand-maintained table until PUCT load-queue transparency (Dec 2026); layers.load_pocket
+      # Owner decision 6 Oct 2026: distance from the array to the nearest qualifying project. Operating / under
+      # construction score the band; announced projects score announced_factor × the band; the better of the two counts.
+      bands: [{lt: 10, pts: 5}, {lt: 25, pts: 3}, {lt: 50, pts: 1}, {else: 0}]
+      announced_factor: 0.5
 
   E_thermal_cooling:           # 15 pts in the brief; 9 while lambda is informative only — Komorebi-specific
     soil_lambda_w_mk:

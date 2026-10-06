@@ -31,7 +31,7 @@ export default async function Home() {
       <p className="mt-1 max-w-3xl text-sm text-neutral-600 dark:text-neutral-400">
         Plants passing the hard filters (≥10 MW AC, COD 2015–2022, Texas), ranked on the brief’s scoring model. Poor
         generation performance is a price signal, not a defect: low capture, high curtailment and older modules score
-        higher. Inputs not measured yet (load pockets, offtake) score half their points; “Data” shows how much of each
+        higher. Inputs with no data and the offtake status (no public source) score half their points; “Data” shows how much of each
         score rests on real data. Move the weights to re-rank; Export XLSX downloads every metric at the current weights.
       </p>
       {error ? (
