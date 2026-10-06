@@ -28,6 +28,7 @@ jobs:
       ERCOT_API_PASSWORD: ${{ secrets.ERCOT_API_PASSWORD }}
       ERCOT_API_SUBSCRIPTION_KEY: ${{ secrets.ERCOT_API_SUBSCRIPTION_KEY }}
       NLR_API_KEY: ${{ secrets.NLR_API_KEY }}
+      NLR_API_EMAIL: ${{ secrets.NLR_API_EMAIL }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

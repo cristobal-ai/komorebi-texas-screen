@@ -22,6 +22,10 @@ type Layers = {
   parcels: Record<string, string | number | boolean | null> | null;
   gas: Record<string, string | number | boolean | null> | null;
   flood: Record<string, string | number | boolean | null> | null;
+  fiber: Record<string, string | number | boolean | null> | null;
+  climate: Record<string, string | number | boolean | null> | null;
+  wells: Record<string, string | number | boolean | null> | null;
+  soils: Record<string, string | number | boolean | null> | null;
 };
 
 const n = (v: unknown) => (typeof v === "number" ? v : null);
@@ -124,20 +128,40 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes, soRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_wells").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_soils").select("*").eq("eia_id", eiaId).maybeSingle(),
   ]);
   const score = (scoreRes.data ?? null) as Score | null;
-  const L: Layers = { transmission: trRes.data, parcels: pcRes.data, gas: gasRes.data, flood: flRes.data };
+  const L: Layers = {
+    transmission: trRes.data,
+    parcels: pcRes.data,
+    gas: gasRes.data,
+    flood: flRes.data,
+    fiber: fbRes.data,
+    climate: clRes.data,
+    wells: wlRes.data,
+    soils: soRes.data,
+  };
+  const C = L.climate;
+  const W = L.wells;
+  const S = L.soils;
 
   const flags: string[] = [];
   if (L.flood?.flood_flag)
     flags.push(
       `Flood: ${pct(n(L.flood.sfha_share), 0)} of the array (${num(n(L.flood.sfha_acres), 0)} acres) in FEMA 1% annual-chance zones (${text(t(L.flood.flood_zones))}); the brief’s kill criterion — shown, not scored`,
+    );
+  if (score?.thermal_response_test_required)
+    flags.push(
+      `Soil thermal conductivity estimate ${num(n(S?.soil_lambda_w_mk), 2)} W/m·K is below 1.0: a thermal response test is required before sizing the loop field`,
     );
   if (p.sb6_review_required) flags.push(`SB6 co-location review: planned load ${num(p.planned_load_mw)} MW is at or above the large-load threshold`);
   if (p.tax_equity_consent_likely) flags.push("Tax-equity consent likely (COD ≥ 2019)");
@@ -264,12 +288,107 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
             ],
             ["Any gas line", L.gas ? (n(L.gas.dist_gas_any_mi) !== null ? `${num(n(L.gas.dist_gas_any_mi))} mi` : "—") : "—", "gathering included; RRC QPipelines (display only)"],
             [
+              "Fiber lateral (proxy)",
+              L.fiber ? (n(L.fiber.fiber_lateral_miles) !== null ? `${num(n(L.fiber.fiber_lateral_miles))} mi to ${L.fiber.fiber_corridor === "rail" ? `${text(t(L.fiber.nearest_rail_owner))} mainline` : text(t(L.fiber.nearest_interstate))}` : `no corridor within ${num(n(L.fiber.fiber_search_mi), 0)} mi`) : "—",
+              L.fiber
+                ? `Class I rail ${n(L.fiber.dist_class1_rail_mi) !== null ? `${num(n(L.fiber.dist_class1_rail_mi))} mi` : "none near"} · interstate ${n(L.fiber.dist_interstate_mi) !== null ? `${num(n(L.fiber.dist_interstate_mi))} mi` : "none near"} · confidence low (routes are not public)`
+                : undefined,
+            ],
+            [
+              "Carrier hotel latency (est.)",
+              L.fiber && n(L.fiber.latency_rtt_ms_est) !== null ? `~${num(n(L.fiber.latency_rtt_ms_est))} ms RTT to ${text(t(L.fiber.nearest_carrier_hotel))}` : "—",
+              L.fiber ? `${text(t(L.fiber.carrier_hotel_rtt_ms))} (estimated route from great circle × config route factor; light in glass only)` : undefined,
+            ],
+            [
               "FEMA flood zones",
               !L.flood ? "—" : L.flood.flood_status === "not_mapped" ? "No digital flood map: unknown" : `${pct(n(L.flood.sfha_share), 1)} of array in SFHA`,
               L.flood && L.flood.flood_status === "ok"
                 ? `zones ${text(t(L.flood.flood_zones))}; 0.2%: ${pct(n(L.flood.x500_share), 1)}; floodway ${pct(n(L.flood.floodway_share), 1)}`
                 : undefined,
             ],
+          ]}
+        />
+        <Section
+          title={`Climate (NSRDB${C ? ` ${text(t(C.climate_years))}` : ""})`}
+          rows={[
+            [
+              "Hours below 25 °C dry-bulb",
+              C ? `${num(n(C.hours_below_25c_drybulb), 0)} h/yr` : "—",
+              C ? `mean of the years (scored); worst year ${num(n(C.hours_below_25c_drybulb_min), 0)} · TMY ${num(n(C.hours_below_25c_drybulb_tmy), 0)}` : undefined,
+            ],
+            ["By year", text(t(C?.hours_below_25c_by_year))],
+            [
+              "Hours below 20 / 15 °C",
+              C ? `${num(n(C.hours_below_20c_drybulb), 0)} / ${num(n(C.hours_below_15c_drybulb), 0)} h/yr` : "—",
+            ],
+            ["Hours below 20 °C wet-bulb", C ? `${num(n(C.hours_below_20c_wetbulb), 0)} h/yr` : "—", "Stull (2011) from temperature and humidity"],
+            ["Hours above 35 °C", C ? `${num(n(C.hours_above_35c_drybulb), 0)} h/yr` : "—", "dry-cooler derate hours"],
+            [
+              "Design dry-bulb / wet-bulb (0.4%)",
+              C ? `${num(n(C.design_drybulb_0p4_c))} / ${num(n(C.design_wetbulb_0p4_c))} °C` : "—",
+              C ? `max ${num(n(C.max_drybulb_c))} °C` : undefined,
+            ],
+            ["Mean annual temperature", C ? `${num(n(C.mean_annual_temp_c))} °C` : "—", "≈ undisturbed ground temperature below ~10 m"],
+            [
+              "NSRDB cell",
+              C ? `${num(n(C.nsrdb_lat), 2)}, ${num(n(C.nsrdb_lon), 2)} · ${num(n(C.nsrdb_elevation_m), 0)} m` : "—",
+              C ? `confidence ${text(t(C.climate_confidence))} (modelled MERRA-2 temperature, ~4 km cell)` : undefined,
+            ],
+          ]}
+        />
+        <Section
+          title="Ground & water (SSURGO soils, TWDB well records)"
+          rows={[
+            [
+              "Soil thermal conductivity λ",
+              S && n(S.soil_lambda_w_mk) !== null ? `${num(n(S.soil_lambda_w_mk), 2)} W/m·K` : S ? "no soil data" : "—",
+              S && n(S.soil_lambda_w_mk) !== null
+                ? `at field capacity, top 2 m (scored); dry ${num(n(S.soil_lambda_dry_w_mk), 2)} · saturated ${num(n(S.soil_lambda_sat_w_mk), 2)}; estimate (Côté & Konrad), a thermal response test decides`
+                : undefined,
+            ],
+            [
+              "Soil",
+              S ? text(t(S.dominant_soil)) : "—",
+              S && n(S.soil_sand_pct) !== null
+                ? `sand ${num(n(S.soil_sand_pct), 0)}% · clay ${num(n(S.soil_clay_pct), 0)}% · ${num(n(S.soil_bulk_density), 2)} g/cm³; ${text(t(S.dominant_mapunit))}`
+                : undefined,
+            ],
+            [
+              "Restrictive layers (top 2 m)",
+              S ? (t(S.restriction_kinds) ? `${text(t(S.restriction_kinds))}` : "none mapped") : "—",
+              S && t(S.restriction_kinds)
+                ? `${pct(n(S.restriction_share), 0)} of the array; shallowest ${num(n(S.restriction_min_depth_cm), 0)} cm (petrocalcic = caliche hardpan)`
+                : undefined,
+            ],
+            [
+              "Thick caliche / gypsum",
+              W && n(W.thick_hard_layer_share) !== null ? `${pct(n(W.thick_hard_layer_share), 0)} of driller logs` : "—",
+              W
+                ? n(W.logs_radius_mi) !== null
+                  ? `≥ 20 ft in the top 500 ft (scored); ${num(n(W.n_logs), 0)} logs within ${num(n(W.logs_radius_mi), 0)} mi, median depth ${num(n(W.median_log_depth_ft), 0)} ft`
+                  : `only ${num(n(W.n_logs), 0)} logs within 10 mi: no data, scored neutral`
+                : undefined,
+            ],
+            [
+              "Any caliche / any gypsum",
+              W && n(W.caliche_log_share) !== null ? `${pct(n(W.caliche_log_share), 0)} / ${pct(n(W.gypsum_log_share), 0)} of logs` : "—",
+              W && n(W.hard_layer_ft_median) !== null ? `median ${num(n(W.hard_layer_ft_median), 0)} ft, 90th pct ${num(n(W.hard_layer_ft_p90), 0)} ft per log` : undefined,
+            ],
+            [
+              "Hard rock · lost circulation",
+              W && n(W.hard_rock_log_share) !== null ? `${pct(n(W.hard_rock_log_share), 0)} · ${pct(n(W.lost_circulation_log_share), 0)} of logs` : "—",
+              "≥ 20 ft limestone/dolomite/igneous · lost returns or cavities (display only)",
+            ],
+            [
+              "Depth to water",
+              W && n(W.depth_to_water_ft) !== null ? `${num(n(W.depth_to_water_ft), 0)} ft` : "—",
+              W && n(W.depth_to_water_ft) !== null
+                ? `median (scored); IQR ${num(n(W.depth_to_water_ft_p25), 0)}–${num(n(W.depth_to_water_ft_p75), 0)} ft; ${text(t(W.water_level_sources))} within ${num(n(W.water_radius_mi), 0)} mi; latest ${text(String(W.latest_water_level_year ?? "—"))}`
+                : undefined,
+            ],
+            ["Closed-loop geothermal bores nearby", W ? num(n(W.n_geothermal_bores), 0) : "—", "SDR wells with that proposed use within 10 mi"],
+            ["Aquifer · GCD", W ? `${text(t(W.aquifer_majority))} · ${text(t(W.gcd_majority))}` : "—", "most common among nearby TWDB monitored wells"],
+            ["Confidence", text(t(W?.wells_confidence)), "free-text driller logs: a screen, not a geotechnical finding"],
           ]}
         />
         <Section

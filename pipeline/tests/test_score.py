@@ -63,9 +63,31 @@ def test_missing_metrics_score_neutral_and_lower_completeness(cfg):
     p3 = out.set_index("eia_id").loc[3]
     assert p3["pts_capture"] == 6 and p3["pts_curtailment"] == 4 and p3["pts_cf_benchmark"] == 3
     assert "capture" in p3["missing_inputs"] and p3["data_completeness"] < out.set_index("eia_id").loc[1, "data_completeness"]
-    # layers not built yet: neutral half points
-    assert p3["score_E"] == 7.5 and p3["pts_load_pocket"] == 2.5
-    assert set(notes["not_built"]) >= {"lambda", "load_pocket"}
+    # layers not built yet: neutral half points (E max 9: lambda is informative only)
+    assert p3["score_E"] == 4.5 and p3["pts_load_pocket"] == 2.5
+    assert set(notes["not_built"]) >= {"hours25", "load_pocket"}
+
+
+def test_hours_below_25c_scored_from_climate_layer(cfg):
+    rows = [plant(eia_id=1, hours_below_25c_drybulb=6200.0), plant(eia_id=2, hours_below_25c_drybulb=4500.0),
+            plant(eia_id=3, hours_below_25c_drybulb=3900.0), plant(eia_id=4, hours_below_25c_drybulb=np.nan)]
+    out, notes = run(cfg, rows)
+    o = out.set_index("eia_id")
+    assert list(o["pts_hours25"]) == [3, 1, 0, 1.5]
+    assert "hours25" not in (o.loc[1, "missing_inputs"] or "") and "hours25" in o.loc[4, "missing_inputs"]
+    assert "hours25" not in notes["not_built"]
+
+
+def test_drillability_and_depth_to_water_from_wells_layer(cfg):
+    rows = [plant(eia_id=1, thick_hard_layer_share=0.05, depth_to_water_ft=250.0),
+            plant(eia_id=2, thick_hard_layer_share=0.30, depth_to_water_ft=120.0),
+            plant(eia_id=3, thick_hard_layer_share=0.80, depth_to_water_ft=40.0),
+            plant(eia_id=4, thick_hard_layer_share=np.nan, depth_to_water_ft=np.nan)]
+    out, notes = run(cfg, rows)
+    o = out.set_index("eia_id")
+    assert list(o["pts_drill"]) == [4, 2, 0, 2] and list(o["pts_water"]) == [2, 1, 0, 1]
+    assert "drill" in o.loc[4, "missing_inputs"] and "drill" not in (o.loc[1, "missing_inputs"] or "")
+    assert {"drill", "water"}.isdisjoint(notes["not_built"])
 
 
 def test_no_345_within_radius_is_data_not_missing(cfg):
@@ -119,6 +141,8 @@ def test_loader_columns_match_migration_and_scores(cfg):
     sql = next(Path("supabase/migrations").glob("*_plant_scores.sql")).read_text(encoding="utf-8")
     body = re.search(r"create table public\.plant_scores \((.*?)\n\);", sql, re.S).group(1)
     cols = [m.group(1) for line in body.splitlines() if (m := re.match(r"\s*([a-z_0-9]+)\s", line.split("--")[0]))]
+    for f in sorted(Path("supabase/migrations").glob("*.sql")):        # later `alter table plant_scores add column`s
+        cols += re.findall(r"alter table public\.plant_scores\s+add column (?:if not exists )?([a-z_0-9]+)", f.read_text(encoding="utf-8"))
     assert [c for c in cols if c != "loaded_at"] == [c.lower() for c in sl.SCORE_COLUMNS]
     out, _ = run(cfg, [plant(eia_id=1)])
     out["score_version"], out["run_id"] = "v", "r"

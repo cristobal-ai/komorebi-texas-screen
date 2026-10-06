@@ -36,8 +36,35 @@ FLOOD_COLUMNS = [
     "zone_d_share", "flood_zones", "flood_flag", "nfhl_study_ids", "flood_source", "flood_fetched", "flood_confidence",
     "run_id",
 ]
+FIBER_COLUMNS = [
+    "eia_id", "dist_class1_rail_mi", "nearest_rail_owner", "nearest_rail_subdiv", "dist_interstate_mi",
+    "nearest_interstate", "fiber_lateral_miles", "fiber_corridor", "nearest_carrier_hotel", "carrier_hotel_gc_mi",
+    "carrier_hotel_route_mi_est", "latency_rtt_ms_est", "carrier_hotel_rtt_ms", "fiber_search_mi", "fiber_source",
+    "fiber_fetched", "fiber_confidence", "run_id",
+]
+CLIMATE_COLUMNS = [
+    "eia_id", "hours_below_25c_drybulb", "hours_below_25c_drybulb_min", "hours_below_25c_drybulb_tmy",
+    "hours_below_25c_by_year", "hours_below_15c_drybulb", "hours_below_20c_drybulb", "hours_below_20c_wetbulb",
+    "hours_above_35c_drybulb", "mean_annual_temp_c", "design_drybulb_0p4_c", "design_wetbulb_0p4_c", "max_drybulb_c",
+    "nsrdb_location_id", "nsrdb_lat", "nsrdb_lon", "nsrdb_elevation_m", "climate_years", "climate_source",
+    "climate_fetched", "climate_confidence", "run_id",
+]
+WELLS_COLUMNS = [
+    "eia_id", "n_logs", "logs_radius_mi", "thick_hard_layer_share", "hard_layer_ft_median", "hard_layer_ft_p90",
+    "caliche_log_share", "gypsum_log_share", "hard_rock_log_share", "lost_circulation_log_share", "median_log_depth_ft",
+    "n_geothermal_bores", "n_water_levels", "water_radius_mi", "depth_to_water_ft", "depth_to_water_ft_p25",
+    "depth_to_water_ft_p75", "water_level_sources", "latest_water_level_year", "aquifer_majority", "gcd_majority",
+    "wells_source", "wells_fetched", "wells_confidence", "run_id",
+]
+SOILS_COLUMNS = [
+    "eia_id", "soil_status", "soil_lambda_w_mk", "soil_lambda_dry_w_mk", "soil_lambda_sat_w_mk", "soil_sand_pct",
+    "soil_clay_pct", "soil_bulk_density", "soil_theta_fc", "dominant_soil", "dominant_mapunit", "n_mapunits",
+    "soil_data_share", "restriction_kinds", "restriction_min_depth_cm", "restriction_share", "bedrock_depth_cm_min",
+    "soil_source", "soil_fetched", "soil_confidence", "run_id",
+]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
-                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS}
+                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
+                 "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS, "soils": SOILS_COLUMNS}
 BATCH = 100
 
 

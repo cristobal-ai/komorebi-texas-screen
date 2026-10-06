@@ -11,6 +11,7 @@ export type Score = {
   score_d: number;
   score_e: number;
   score_f: number;
+  thermal_response_test_required?: boolean | null;
   pts_capture: number | null;
   pts_curtailment: number | null;
   pts_cf_benchmark: number | null;
@@ -94,9 +95,9 @@ export const SECTIONS: { id: SectionId; label: string; max: number; penalty?: bo
     ],
   },
   {
-    id: "e", label: "E · Thermal & cooling", max: 15,
+    // brief: 15 with soil λ (6). Owner decision 5 Oct 2026: λ is shown on the plant page, not scored (config `scored: false`)
+    id: "e", label: "E · Thermal & cooling", max: 9,
     components: [
-      { key: "pts_lambda", label: "Soil thermal conductivity λ", max: 6 },
       { key: "pts_drill", label: "Drillability", max: 4 },
       { key: "pts_hours25", label: "Hours below 25 °C", max: 3 },
       { key: "pts_water", label: "Depth to water", max: 2 },
