@@ -33,6 +33,43 @@ type Layers = {
 const n = (v: unknown) => (typeof v === "number" ? v : null);
 const t = (v: unknown) => (typeof v === "string" ? v : null);
 
+const OFFTAKE_LABEL: Record<string, string> = {
+  merchant: "merchant",
+  short_contract: "contract with under 5 years left",
+  long_contract_ig: "long contract, investment-grade buyer",
+  long_contract_non_ig: "long contract, buyer not investment grade",
+  long_contract_unknown_credit: "long contract, buyer credit not determined",
+  utility_owned: "utility-owned (self-supply)",
+  unknown: "not found in public sources (scored neutral)",
+};
+
+/** Offtake class, counterparty, end date and source (hand-maintained data/offtake.csv). */
+function OfftakeNote({ s }: { s: Score }) {
+  const status = s.offtake_status ?? "unknown";
+  const terms = [
+    s.offtake_type && s.offtake_type !== status ? s.offtake_type.replace("_", " ") : null,
+    s.offtake_counterparty,
+    s.offtake_contract_end ? `ends ${s.offtake_contract_end}${typeof s.offtake_years_left === "number" ? ` (${num(s.offtake_years_left, 1)} yr)` : ""}` : null,
+  ].filter(Boolean);
+  return (
+    <>
+      Offtake: {OFFTAKE_LABEL[status] ?? status}
+      {terms.length > 0 && ` — ${terms.join(", ")}`}
+      {s.offtake_source_url && (
+        <>
+          {" "}
+          (
+          <a href={s.offtake_source_url} target="_blank" rel="noreferrer" className="underline">
+            source{s.offtake_source_date ? ` ${s.offtake_source_date}` : ""}
+          </a>
+          , confidence {text(s.offtake_confidence)})
+        </>
+      )}
+      .
+    </>
+  );
+}
+
 function ScoreSection({ s }: { s: Score }) {
   return (
     <section className="mt-4 rounded border border-neutral-200 p-4 dark:border-neutral-800">
@@ -80,7 +117,7 @@ function ScoreSection({ s }: { s: Score }) {
       <p className="mt-3 text-xs text-neutral-500">
         CF used {pct(s.cf_used)} ({text(s.cf_source)}) vs {text(s.region)} benchmark {pct(s.cf_benchmark)}. Fixed cost
         ${num((s.fixed_cost_est_usd ?? 0) / 1e6, 1)}M → ${num(s.fixed_cost_per_kw_it, 0)}/kW firm IT
-        {s.fixed_cost_includes_fiber ? "" : " (fiber lateral not included yet: a floor)"}. Offtake {text(s.offtake_confidence)}.
+        {s.fixed_cost_includes_fiber ? "" : " (fiber lateral not included yet: a floor)"}. <OfftakeNote s={s} />
         {missingLabels(s.missing_inputs).length > 0 && ` Neutral inputs: ${missingLabels(s.missing_inputs).join("; ")}.`}
       </p>
     </section>

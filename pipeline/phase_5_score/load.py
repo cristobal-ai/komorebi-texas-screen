@@ -22,6 +22,9 @@ SCORE_COLUMNS = [
     "cf_benchmark", "cf_below_benchmark_pts", "offtake_confidence", "fixed_cost_est_usd", "fixed_cost_includes_fiber",
     "fixed_cost_per_kw_it", "thermal_response_test_required", "score_version", "run_id",
     "fiber_lateral_miles",   # added by *_layers_fiber.sql (alter table)
+    # added by *_plant_scores_offtake.sql (alter table)
+    "offtake_status", "offtake_type", "offtake_counterparty", "offtake_counterparty_ig", "offtake_contract_end",
+    "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date",
 ]
 
 

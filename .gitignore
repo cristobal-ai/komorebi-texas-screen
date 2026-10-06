@@ -11,6 +11,7 @@ data/*
 !data/README.md
 !data/crosswalk_eia_ercot.csv
 !data/load_pockets.csv
+!data/offtake.csv
 !data/.gitkeep
 
 # Python

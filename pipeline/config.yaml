@@ -300,11 +300,20 @@ scoring:
       # when set, else the median CF of the scored plants in that region (computed at scoring time, written to the report).
       fixed: [{below_pts_gt: 4, pts: 6}, {below_pts_gt: 2, pts: 4}, {else: 1}]
     offtake_status:
+      # Hand-maintained data/offtake.csv (pipeline/phase_5_score/offtake.py): one sourced row per plant from owner SEC
+      # filings, utility filings and PPA press releases (no ERCOT dataset; FERC EQR misses ERCOT-only sellers).
+      # Owner decisions 6 Oct 2026: hedges score like PPAs by years left; long non-IG 1; utility-owned 0.
+      table: data/offtake.csv
       max: 4
-      merchant: 4
-      short_ppa_lt_5yr: 3
-      long_ig_ppa: 0
-      unknown: 2               # displayed with offtake_confidence = 'unknown'
+      merchant: 4              # stated merchant, or contract ended with no replacement found
+      short_ppa_lt_5yr: 3      # PPA or hedge with < short_years left
+      short_years: 5
+      long_ig_ppa: 0           # >= short_years left, investment-grade counterparty
+      long_non_ig_ppa: 1       # ... not investment grade or unrated
+      long_unknown_credit: 0.5 # ... credit not determined (between the two)
+      utility_owned: 0         # utility / municipal / coop self-supply: the hardest to acquire
+      unknown: 2               # no row / nothing found / contract end not published: neutral, in missing_inputs
+      year_only_end_month: 7   # a contract_end given as a year is read as 1 July of that year
 
   B_repowering_upside:         # 15 pts — module type is a vintage proxy (EIA-860 lacks poly/mono)
     polycrystalline: 6

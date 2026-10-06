@@ -20,9 +20,13 @@ import numpy as np
 import pandas as pd
 
 from pipeline.common import DATA_DIR, load_config
+from pipeline.phase_5_score import offtake
 
 log = logging.getLogger(__name__)
 LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils", "load_pocket")
+
+OFFTAKE_OUT = ["offtake_status", "offtake_type", "offtake_counterparty", "offtake_counterparty_ig", "offtake_contract_end",
+               "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date"]
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -145,10 +149,20 @@ def score(df: pd.DataFrame, cfg: dict) -> tuple[pd.DataFrame, dict]:
     put("cf_benchmark", below_pts.map(lambda v: np.nan if pd.isna(v) else
                                       next((float(b["pts"]) for b in cfb if "below_pts_gt" in b and v > b["below_pts_gt"]),
                                            float(cfb[-1]["else"]))), A["cf_vs_benchmark"]["max"])
+    # offtake: hand-maintained data/offtake.csv classified by phase_5_score/offtake.py; unknown → neutral, missing
     off = A["offtake_status"]
-    put("offtake", pd.Series(float(off["unknown"]), index=df.index), off["max"])
-    missing["offtake"] = pd.Series(True, index=df.index)   # scored at the 'unknown' value, but no data behind it
-    out["offtake_confidence"] = "unknown"
+    if "offtake_pts" in df.columns:
+        put("offtake", df["offtake_pts"], off["max"])
+        for c in OFFTAKE_OUT:
+            out[c] = df[c]
+        out["offtake_status"] = df["offtake_status"].fillna("unknown")
+        out["offtake_confidence"] = df["offtake_row_confidence"].where(df["offtake_pts"].notna(), "unknown")
+    else:
+        put("offtake", pd.Series(np.nan, index=df.index), off["max"], "not_built")
+        for c in OFFTAKE_OUT:
+            out[c] = None
+        out["offtake_status"] = "unknown"
+        out["offtake_confidence"] = "unknown"
 
     # B — repowering upside (vintage proxy) ----------------------------------------------------------------------------
     B = s["B_repowering_upside"]
@@ -287,6 +301,9 @@ def run() -> Path:
     metrics = pd.read_parquet(mp) if mp.exists() else None
     layers = {n: pd.read_parquet(DATA_DIR / "layers" / f"{n}.parquet") for n in LAYERS
               if (DATA_DIR / "layers" / f"{n}.parquet").exists()}
+    off = offtake.load(cfg["scoring"]["A_acquisition_discount"]["offtake_status"], dt.date.today())
+    if off is not None:
+        layers["offtake"] = off
     log.info("scoring with metrics=%s, layers=%s", metrics is not None, sorted(layers))
     scores, notes = score(assemble(plants, metrics, layers), cfg)
     scores["score_version"] = str(cfg.get("version"))

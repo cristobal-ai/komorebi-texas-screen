@@ -40,6 +40,14 @@ export type Score = {
   cf_benchmark: number | null;
   cf_below_benchmark_pts: number | null;
   offtake_confidence: string | null;
+  offtake_status?: string | null;
+  offtake_type?: string | null;
+  offtake_counterparty?: string | null;
+  offtake_counterparty_ig?: string | null;
+  offtake_contract_end?: string | null;
+  offtake_years_left?: number | null;
+  offtake_source_url?: string | null;
+  offtake_source_date?: string | null;
   fixed_cost_est_usd: number | null;
   fixed_cost_includes_fiber: boolean | null;
   fixed_cost_per_kw_it: number | null;
