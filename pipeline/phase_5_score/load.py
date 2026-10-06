@@ -25,6 +25,7 @@ SCORE_COLUMNS = [
     # added by *_plant_scores_offtake.sql (alter table)
     "offtake_status", "offtake_type", "offtake_counterparty", "offtake_counterparty_ig", "offtake_contract_end",
     "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date",
+    "offtake_end_basis", "offtake_flags",
 ]
 
 

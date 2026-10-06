@@ -26,7 +26,8 @@ log = logging.getLogger(__name__)
 LAYERS = ("transmission", "parcels", "flood", "gas_pipelines", "fiber", "climate", "wells", "soils", "load_pocket")
 
 OFFTAKE_OUT = ["offtake_status", "offtake_type", "offtake_counterparty", "offtake_counterparty_ig", "offtake_contract_end",
-               "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date"]
+               "offtake_years_left", "offtake_expired", "offtake_share_contracted", "offtake_source_url", "offtake_source_date",
+               "offtake_end_basis", "offtake_flags"]
 
 # component → (section, config path to its max points). E/F and not-yet-built inputs are handled below.
 SECTIONS = {
@@ -301,7 +302,8 @@ def run() -> Path:
     metrics = pd.read_parquet(mp) if mp.exists() else None
     layers = {n: pd.read_parquet(DATA_DIR / "layers" / f"{n}.parquet") for n in LAYERS
               if (DATA_DIR / "layers" / f"{n}.parquet").exists()}
-    off = offtake.load(cfg["scoring"]["A_acquisition_discount"]["offtake_status"], dt.date.today())
+    cod = pd.to_datetime(plants.set_index("eia_id")["cod_first"])
+    off = offtake.load(cfg["scoring"]["A_acquisition_discount"]["offtake_status"], dt.date.today(), cod)
     if off is not None:
         layers["offtake"] = off
     log.info("scoring with metrics=%s, layers=%s", metrics is not None, sorted(layers))
