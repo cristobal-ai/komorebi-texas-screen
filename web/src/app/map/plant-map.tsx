@@ -35,6 +35,8 @@ const TIER_LABELS: Record<Tier, string> = {
 };
 // Free vector basemap, no token (OpenFreeMap).
 const BASEMAP = "https://tiles.openfreemap.org/styles/liberty";
+// Bundled by Next, MapLibre cannot find its worker next to itself; scripts/copy-maplibre-worker.mjs publishes it here.
+const WORKER_URL = "/maplibre/maplibre-gl-worker.mjs";
 const TEXAS_BOUNDS: [number, number, number, number] = [-106.65, 25.84, -93.51, 36.5];
 
 const tierColorExpr = [
@@ -71,6 +73,7 @@ export default function PlantMap({ plants }: { plants: MapPlant[] }) {
         .map((p) => ({ type: "Feature", geometry: { type: "Point", coordinates: [p.lon!, p.lat!] }, properties: props(p) })),
     };
 
+    maplibregl.setWorkerUrl(WORKER_URL);
     const map = new maplibregl.Map({ container: container.current, style: BASEMAP, bounds: TEXAS_BOUNDS });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");

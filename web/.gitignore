@@ -42,3 +42,6 @@ next-env.d.ts
 
 # keep the template
 !.env.example
+
+# MapLibre worker, copied from node_modules at build time (scripts/copy-maplibre-worker.mjs)
+/public/maplibre/
