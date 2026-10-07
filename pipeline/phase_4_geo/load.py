@@ -11,6 +11,7 @@ import requests
 from pipeline.common import load_env
 from pipeline.load_supabase import _clean, _send, headers
 from pipeline.phase_4_geo import common as g
+from pipeline.phase_4_geo import reference
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ def run(names: list[str]) -> None:
         if not path.exists():
             raise SystemExit(f"{path} is missing: run --phase 4 --layer {name} first")
         load_layer(name, pd.read_parquet(path), url, key, run_id, set(plants["eia_id"].astype(int)))
+        reference.load(name, url, key, run_id)        # map overlay points that belong to this layer, if any
 
 
 if __name__ == "__main__":
