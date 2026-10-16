@@ -54,6 +54,7 @@ As of 5 October 2026: 243 Texas PV plants; 75 pass (10,346.8 MW AC), 1 review (2
 | TxGIO StratMap Land Parcels | host parcels, owners, acreage, appraised value | 2026 statewide |
 | Texas RRC pipeline layer | natural-gas transmission and gathering lines | October 2026 |
 | FEMA National Flood Hazard Layer | flood zones; digital-map availability | October 2026 |
+| FCC Broadband Data Collection (fixed broadband, fiber to the premises) | Provider-reported FTTP near the site (display only) | when downloaded |
 | BTS NTAD rail network; PeeringDB | Class I mainline (fiber proxy); carrier-hotel locations | October 2026 |
 | NSRDB PSM v4 (NLR, formerly NREL) | hourly air temperature and humidity 2021–2025, TMY | October 2026 |
 | TWDB Submitted Driller's Reports and Groundwater Database | driller lithology logs, water levels, aquifer, GCD | 3 October 2026 nightly |
@@ -86,6 +87,7 @@ Each layer has its own script, raw cache and database table, and is measured fro
 | Gas pipelines | distance to in-service gas transmission (RRC) | no | medium |
 | Flood | share of the array in FEMA SFHA, floodway, 0.2% and Zone D; counties without a digital map are *unknown*, never "no risk" | no (flag at ≥ 10% SFHA) | medium |
 | Fiber (proxy) | distance to Class I mainline or interstate right-of-way (where long-haul fiber is laid); great-circle × 1.5 to the nearest carrier hotel for latency | lateral cost in F | low, always |
+| Fiber FTTP (FCC BDC) | distance to the nearest H3 res-8 cell with provider-reported fiber-to-the-premises, providers and speeds within 5 mi (last mile, display only) | none | medium (self-reported by providers) |
 | Climate | NSRDB hourly 2021–2025: hours below 25 °C dry-bulb (5-year mean, normalised to 8,760 h); also wet-bulb hours, hours above 35 °C, 0.4% design temperatures, TMY | hours below 25 °C (E) | medium |
 | Wells | share of TWDB driller logs within 3 mi (6, then 10 mi if fewer than 5) with ≥ 20 ft of caliche, gypsum or anhydrite in the top 500 ft; median static water level | drillability, depth to water (E) | medium / low |
 | Soils | SSURGO thermal conductivity, Côté & Konrad (2005) at field capacity, depth-weighted over 0–2 m; restrictive layers | no — informative (owner decision) | medium / low |
