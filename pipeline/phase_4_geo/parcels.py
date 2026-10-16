@@ -284,7 +284,7 @@ def analyze(array_geom, parcels: gpd.GeoDataFrame, cfg: dict, ac_mw: float, poin
 def run() -> Path:
     cfg = load_config()
     c = cfg["layers"]["parcels"]
-    plants = g.load_plants()
+    plants = g.load_plants(include_parcel_fails=True)
     folder = raw_dir(NAME) / "manual"
     cache = raw_dir(NAME) / "selected"
     cache.mkdir(exist_ok=True)
