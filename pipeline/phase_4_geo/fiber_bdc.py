@@ -52,7 +52,11 @@ def _h3():
 
 
 def find_inputs(folder: Path) -> list[Path]:
-    return sorted(p for p in folder.glob("*") if p.suffix.lower() in (".csv", ".zip"))
+    """CSVs and zips in the folder; a zip is skipped when a CSV of the same name sits beside it (the FCC page offers both, and
+    reading both would count every location twice)."""
+    files = sorted(p for p in folder.glob("*") if p.suffix.lower() in (".csv", ".zip"))
+    stems = {p.stem for p in files if p.suffix.lower() == ".csv"}
+    return [p for p in files if not (p.suffix.lower() == ".zip" and p.stem in stems)]
 
 
 def release_of(name: str) -> str | None:

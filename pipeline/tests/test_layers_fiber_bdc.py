@@ -85,3 +85,9 @@ def test_loader_columns_match_migration():
     block = sql.split("create table public.layers_fiber_bdc (")[1].split("\n);")[0]
     cols = [ln.split()[0] for ln in block.splitlines() if ln.strip() and not ln.strip().startswith("--")]
     assert [c for c in cols if c != "loaded_at"] == ld.LAYER_COLUMNS["fiber_bdc"]
+
+
+def test_zip_beside_same_name_csv_is_not_read_twice(tmp_path):
+    for n in ("a.csv", "a.zip", "b.zip", "notes.txt"):
+        (tmp_path / n).write_text("x")
+    assert [p.name for p in fb.find_inputs(tmp_path)] == ["a.csv", "b.zip"]
