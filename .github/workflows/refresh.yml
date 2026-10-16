@@ -1,12 +1,17 @@
-# Monthly data refresh. Phases 1–2 (plant master) are live; later phases are added as they are written.
+# Monthly data refresh: phases 1, 2 and 5 (plant master, rescore) with a load to Supabase. Phases 3 / 3b / 4 need hand-downloaded
+# files and multi-hour caches, so they run on the owner's machine; their results reach this job through the `pipeline-state`
+# bucket (python -m pipeline.state push, after a local run). The job refuses to run without that state.
 name: refresh
 
 on:
   workflow_dispatch:
     inputs:
       phase:
-        description: "Phase to run (all | N | N-M); implemented: 1, 2"
-        default: "all"
+        description: "Phases to run (N | N-M | N,M,...); the monthly default is 1,2,5"
+        default: "1,2,5"
+      load:
+        description: "Write plants and scores to Supabase (true | false)"
+        default: "true"
       county:
         description: "Optional county filter for validation runs (e.g. Pecos)"
         default: ""
@@ -49,12 +54,17 @@ jobs:
       - name: Unit tests
         run: pytest -q
 
+      # Layers (Phase 4) and market metrics (Phase 3b) built on the owner's machine. Without them a load would drop the parcel
+      # footprint basis and the metrics, so this step fails the job when no state is stored.
+      - name: Pull pipeline state
+        run: python -m pipeline.state pull
+
       - name: Run pipeline
-        run: python -m pipeline.run --phase "${{ github.event.inputs.phase || 'all' }}" ${{ github.event.inputs.county && format('--county {0}', github.event.inputs.county) || '' }}
+        run: python -m pipeline.run --phase "${{ github.event.inputs.phase || '1,2,5' }}" ${{ (github.event.inputs.load || 'true') == 'true' && '--load' || '' }} ${{ github.event.inputs.county && format('--county {0}', github.event.inputs.county) || '' }}
 
       # ercot_pv_conversion_screen.xlsx from the database (default weights) → Supabase Storage `exports`
       # (snapshots/<date>_<run id>.xlsx + _latest.xlsx, served by the app at /export/latest). Same code as the Export button.
-      # Without --load the pipeline does not change the database, so this is a monthly snapshot of what is loaded.
+      # Runs after the load, so the snapshot is the freshly loaded database.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -67,7 +77,7 @@ jobs:
           npm ci --no-audit --no-fund
           npx --yes tsx scripts/export-upload.ts
 
-      # Plant master + hand-check report, downloadable from the run page (Supabase load comes after sign-off)
+      # Plant master + hand-check report, downloadable from the run page
       - name: Upload outputs
         if: always()
         uses: actions/upload-artifact@v4

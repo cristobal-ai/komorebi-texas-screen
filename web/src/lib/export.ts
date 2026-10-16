@@ -23,6 +23,7 @@ export const LAYER_TABLES: { name: string; label: string }[] = [
   { name: "layers_gas_pipelines", label: "Gas pipelines (RRC)" },
   { name: "layers_flood", label: "Flood (FEMA NFHL)" },
   { name: "layers_fiber", label: "Fiber (proxy)" },
+  { name: "layers_fiber_bdc", label: "Fiber FTTP (FCC BDC)" },
   { name: "layers_climate", label: "Climate (NSRDB)" },
   { name: "layers_wells", label: "Wells (TWDB)" },
   { name: "layers_soils", label: "Soils (SSURGO)" },

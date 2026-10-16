@@ -144,6 +144,17 @@ layers:
     route_factor: 1.5              # brief: fiber-route miles ≈ great-circle × 1.5
     rtt_ms_per_route_mile: 0.0158  # 2 × 1.609 km × 4.9 µs/km (light in glass); excludes equipment delay
 
+  fiber_bdc:
+    # FCC BDC fixed-broadband availability, technology 50 = Fiber to the Premises. The CSV is downloaded by hand (login, no stable
+    # URL) into data/raw/fiber_bdc/manual/; see pipeline/phase_4_geo/fiber_bdc.py. Display only, never scored.
+    technology_code: 50
+    business_codes: [B, X]         # business_residential_code: R residential, B business, X both
+    search_radius_mi: 25           # a nearest distance beyond this is null ("none within")
+    near_miles: 5                  # radius for provider counts, speeds and the business-service flag
+    site_cell_m: 500               # an FTTP cell centre within this distance of the array = FTTP at the site (hexagon edge ~460 m)
+    top_brands: 3
+    chunk_rows: 2000000
+
   flood:
     # FEMA National Flood Hazard Layer MapServer: layer 28 Flood Hazard Zones (FLD_ZONE, ZONE_SUBTY, SFHA_TF) and layer 0
     # NFHL Availability (digital FIRM study areas). Many rural Texas counties (Pecos, Milam) have no digital NFHL: those

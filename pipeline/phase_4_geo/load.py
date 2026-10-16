@@ -44,6 +44,11 @@ FIBER_COLUMNS = [
     "carrier_hotel_route_mi_est", "latency_rtt_ms_est", "carrier_hotel_rtt_ms", "fiber_search_mi", "fiber_source",
     "fiber_fetched", "fiber_confidence", "run_id",
 ]
+FIBER_BDC_COLUMNS = [
+    "eia_id", "bdc_status", "bdc_fiber_at_site", "bdc_fiber_nearest_mi", "bdc_nearest_brands", "bdc_providers_near",
+    "bdc_brands_near", "bdc_cells_near", "bdc_max_down_mbps_near", "bdc_max_up_mbps_near", "bdc_business_fiber_near",
+    "bdc_search_mi", "bdc_release", "bdc_source", "bdc_fetched", "bdc_confidence", "run_id",
+]
 CLIMATE_COLUMNS = [
     "eia_id", "hours_below_25c_drybulb", "hours_below_25c_drybulb_min", "hours_below_25c_drybulb_tmy",
     "hours_below_25c_by_year", "hours_below_15c_drybulb", "hours_below_20c_drybulb", "hours_below_20c_wetbulb",
@@ -72,7 +77,7 @@ LOAD_POCKET_COLUMNS = [
     "load_pocket_confidence", "run_id",
 ]
 LAYER_COLUMNS = {"transmission": TRANSMISSION_COLUMNS, "parcels": PARCELS_COLUMNS,
-                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS,
+                 "gas_pipelines": GAS_PIPELINES_COLUMNS, "flood": FLOOD_COLUMNS, "fiber": FIBER_COLUMNS, "fiber_bdc": FIBER_BDC_COLUMNS,
                  "climate": CLIMATE_COLUMNS, "wells": WELLS_COLUMNS, "soils": SOILS_COLUMNS,
                  "load_pocket": LOAD_POCKET_COLUMNS}
 BATCH = 100

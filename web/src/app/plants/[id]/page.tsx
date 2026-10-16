@@ -24,6 +24,7 @@ type Layers = {
   gas: Record<string, string | number | boolean | null> | null;
   flood: Record<string, string | number | boolean | null> | null;
   fiber: Record<string, string | number | boolean | null> | null;
+  fiberBdc: Record<string, string | number | boolean | null> | null;
   climate: Record<string, string | number | boolean | null> | null;
   wells: Record<string, string | number | boolean | null> | null;
   soils: Record<string, string | number | boolean | null> | null;
@@ -243,13 +244,14 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
   const allMonths = (monthlyData ?? []) as unknown as MonthlyMetric[];
   const months = fullMonths(allMonths);
 
-  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, clRes, wlRes, soRes, lpRes] = await Promise.all([
+  const [scoreRes, trRes, pcRes, gasRes, flRes, fbRes, bdcRes, clRes, wlRes, soRes, lpRes] = await Promise.all([
     supabase.from("plant_scores").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_transmission").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_parcels").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_gas_pipelines").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_flood").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_fiber").select("*").eq("eia_id", eiaId).maybeSingle(),
+    supabase.from("layers_fiber_bdc").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_climate").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_wells").select("*").eq("eia_id", eiaId).maybeSingle(),
     supabase.from("layers_soils").select("*").eq("eia_id", eiaId).maybeSingle(),
@@ -262,6 +264,7 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
     gas: gasRes.data,
     flood: flRes.data,
     fiber: fbRes.data,
+    fiberBdc: bdcRes.data,
     climate: clRes.data,
     wells: wlRes.data,
     soils: soRes.data,
@@ -434,6 +437,19 @@ export default async function PlantPage({ params }: { params: Promise<{ id: stri
               L.fiber ? (n(L.fiber.fiber_lateral_miles) !== null ? `${num(n(L.fiber.fiber_lateral_miles))} mi to ${L.fiber.fiber_corridor === "rail" ? `${text(t(L.fiber.nearest_rail_owner))} mainline` : text(t(L.fiber.nearest_interstate))}` : `no corridor within ${num(n(L.fiber.fiber_search_mi), 0)} mi`) : "—",
               L.fiber
                 ? `Class I rail ${n(L.fiber.dist_class1_rail_mi) !== null ? `${num(n(L.fiber.dist_class1_rail_mi))} mi` : "none near"} · interstate ${n(L.fiber.dist_interstate_mi) !== null ? `${num(n(L.fiber.dist_interstate_mi))} mi` : "none near"} · confidence low (routes are not public)`
+                : undefined,
+            ],
+            [
+              "Provider fiber (FCC BDC)",
+              !L.fiberBdc
+                ? "—"
+                : L.fiberBdc.bdc_fiber_at_site
+                  ? `FTTP reported at the site (${num(n(L.fiberBdc.bdc_providers_near), 0)} provider${n(L.fiberBdc.bdc_providers_near) === 1 ? "" : "s"} within 5 mi)`
+                  : n(L.fiberBdc.bdc_fiber_nearest_mi) !== null
+                    ? `nearest FTTP ${num(n(L.fiberBdc.bdc_fiber_nearest_mi))} mi`
+                    : `no FTTP within ${num(n(L.fiberBdc.bdc_search_mi), 0)} mi`,
+              L.fiberBdc
+                ? `${text(t(L.fiberBdc.bdc_brands_near))}${L.fiberBdc.bdc_business_fiber_near ? " · business service reported" : ""} · up to ${num(n(L.fiberBdc.bdc_max_down_mbps_near), 0)} Mbps down within 5 mi · release ${text(t(L.fiberBdc.bdc_release))} (last mile, provider-reported; display only)`
                 : undefined,
             ],
             [

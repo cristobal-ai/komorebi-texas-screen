@@ -13,3 +13,4 @@ gridstatus>=0.30
 supabase>=2.6
 pytest>=8.2
 osmium>=4.0   # Phase 4 transmission layer: reads the OpenStreetMap Texas extract
+h3>=4.0       # Phase 4 fiber_bdc layer: places FCC BDC H3 hexagons

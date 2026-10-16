@@ -169,7 +169,7 @@ def test_run_end_to_end_caches_covered_plants_and_never_caches_missing_coverage(
          "filter_status": ["pass", "pass"]},
         geometry=[ARRAY, box(500_000, 500_000, 501_000, 501_000).centroid], crs="EPSG:5070")
     monkeypatch.setattr(pc, "raw_dir", lambda s: raw)
-    monkeypatch.setattr(pc.g, "load_plants", lambda: plants)
+    monkeypatch.setattr(pc.g, "load_plants", lambda **kw: plants)
     written = {}
     monkeypatch.setattr(pc.g, "write_layer", lambda name, df: written.setdefault(name, df))
     pc.run()
@@ -207,3 +207,17 @@ def test_gdb_folders_are_found_inside_zips_at_any_depth():
              "other.GDB/gdb", "plain/file.shp"]
     assert pc._gdb_roots(names) == ["other.GDB", "stratmap26/lp.gdb"]
     assert pc._gdb_roots(["x.shp", "y/z.dbf"]) == []
+
+
+def test_parcels_layer_keeps_plants_that_failed_on_parcel_acreage_only(tmp_path):
+    from shapely.geometry import Point
+
+    from pipeline.phase_4_geo import common as g
+
+    rows = [("pass", ""), ("review", "array_acres_per_mw<5"), ("fail", "acres_per_mw<5"), ("fail", "acres<60;acres_per_mw<5"),
+            ("fail", "cod<2015-01-01"), ("fail", "acres_per_mw<5;cod<2015-01-01"), ("fail", "")]
+    df = gpd.GeoDataFrame({"eia_id": range(len(rows)), "filter_status": [r[0] for r in rows], "filter_reasons": [r[1] for r in rows],
+                           "lat": 31.0, "lon": -103.0}, geometry=[Point(-103, 31)] * len(rows), crs="EPSG:4326")
+    df.to_parquet(tmp_path / "plants.parquet")
+    assert list(g.load_plants(tmp_path / "plants.parquet")["eia_id"]) == [0, 1]
+    assert list(g.load_plants(tmp_path / "plants.parquet", include_parcel_fails=True)["eia_id"]) == [0, 1, 2, 3]

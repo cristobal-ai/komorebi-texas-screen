@@ -18,11 +18,24 @@ METRIC_CRS = "EPSG:5070"        # CONUS Albers, metres
 M_PER_MI = 1609.344
 
 
-def load_plants(path: Path | None = None) -> gpd.GeoDataFrame:
-    """plants.parquet with a usable geometry for every plant: the USPVDB array polygon, else the EIA lat/lon point."""
+def parcel_decided_fails(plants: pd.DataFrame) -> pd.Series:
+    """Plants that failed ONLY on parcel acreage (reasons 'acres<..' / 'acres_per_mw<..', no array_ prefix and nothing else).
+    Their parcels must stay in the layer: plant_master needs the parcel row to reach the same verdict on every run."""
+    def only_parcel(reasons) -> bool:
+        parts = [x for x in str(reasons or "").split(";") if x]
+        return bool(parts) and all(x.startswith(("acres<", "acres_per_mw<")) for x in parts)
+
+    return (plants["filter_status"] == "fail") & plants["filter_reasons"].map(only_parcel)
+
+
+def load_plants(path: Path | None = None, include_parcel_fails: bool = False) -> gpd.GeoDataFrame:
+    """plants.parquet with a usable geometry for every plant: the USPVDB array polygon, else the EIA lat/lon point.
+    pass + review plants; include_parcel_fails=True (parcels layer only) adds those that failed on parcel acreage alone."""
     plants = gpd.read_parquet(path or DATA_DIR / "plants.parquet")
-    plants = plants[plants["filter_status"].isin(["pass", "review"])].copy()
-    return with_point_fallback(plants)
+    keep = plants["filter_status"].isin(["pass", "review"])
+    if include_parcel_fails:
+        keep = keep | parcel_decided_fails(plants)
+    return with_point_fallback(plants[keep].copy())
 
 
 def with_point_fallback(plants: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
