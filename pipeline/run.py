@@ -26,6 +26,8 @@ DEFAULT_ALL = [1, 2, 3, 5]   # phase 4 layers download several sources; run them
 def _phases(spec: str) -> list[int]:
     if spec == "all":
         return list(DEFAULT_ALL)
+    if "," in spec:                      # "1,2,5"
+        return [int(x) for x in spec.split(",")]
     if "-" in spec:
         a, b = spec.split("-")
         return list(range(int(a), int(b) + 1))
@@ -34,7 +36,7 @@ def _phases(spec: str) -> list[int]:
 
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="pipeline.run")
-    ap.add_argument("--phase", default="all", help="all | N | N-M")
+    ap.add_argument("--phase", default="all", help="all | N | N-M | N,M,...")
     ap.add_argument("--county", default="", help="write a hand-check report for this county after phase 2")
     ap.add_argument("--since", type=dt.date.fromisoformat, default=None, help="3b: first operating day (YYYY-MM-DD)")
     ap.add_argument("--until", type=dt.date.fromisoformat, default=None, help="3b: last operating day")
